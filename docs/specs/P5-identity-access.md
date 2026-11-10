@@ -47,6 +47,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 ### 3.2 Database
 
 - **P5-09** MUST implement the eight tables of architecture §12 exactly (`roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests`, `conversations`, `conversation_messages`) as SQLAlchemy models in `src/core/db/models.py`, with Alembic migrations in `src/core/db/migrations/`.
+- **P5-09b** MUST connect to PostgreSQL with `cfg.database` (`host`, `port`, `name`, `user`) and `POSTGRES_PASSWORD` from `.env`. In CI, tests use `CI_POSTGRES_URL` instead.
 - **P5-10** MUST be the only part that writes migrations. Another part needing a column asks P5.
 - **P5-11** MUST seed, in a migration, the three rows of `roles` (`admin`, `editeur`, `lecteur`) with a description and `web_enabled = true`.
 - **P5-12** MUST create the first admin at startup from `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env` if no admin exists.

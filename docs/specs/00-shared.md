@@ -758,6 +758,11 @@ leak:
 ocr:
   base_url: http://ocr:8070
   max_pages_upload: 50
+database:                   # PostgreSQL (P5); the password is POSTGRES_PASSWORD in .env
+  host: postgres            # the compose service, on the internal network
+  port: 5432
+  name: rag
+  user: postgres
 auth:
   token_minutes: 60
   max_failed_logins: 5

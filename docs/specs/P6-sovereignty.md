@@ -33,6 +33,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 ### 3.1 Infrastructure
 
 - **P6-01** MUST provide `docker-compose.yml` with the services of architecture §5: `api`, `ui`, `postgres`, `qdrant`, `llm` (Ollama), `models`, `ocr`, `web-search`, `searxng`, and `cloud-gateway` (profile `cloud` only). `config.yaml` is mounted read-only into `api`, `ui` and `web-search`.
+- **P6-01b** MUST configure the `postgres` service so it creates the database `database.name` owned by `database.user` (`POSTGRES_DB`, `POSTGRES_USER` from those `config.yaml` values, `POSTGRES_PASSWORD` from `.env`), on the `internal` network only, with its data in the volume `pg_data`.
 - **P6-02** MUST declare three networks: `internal` with `internal: true`; `front`, a bridge with IP masquerade turned off (`com.docker.network.bridge.enable_ip_masquerade: "false"`), reachable from the host but with no route to the internet; and `egress`. `api` and `ui` are on `internal` + `front` and publish their ports there. Only `web-search`, `searxng` and `cloud-gateway` are attached to `egress`. Every other service is on `internal` only. Checked on day 2.
 - **P6-03** MUST provide the profiles `local` (default), `light` and `cloud`, selected by `mode` in `config.yaml` and the matching compose profile.
 - **P6-04** MUST provide `make models`, which downloads every model (LLMs, the Qwen tokenizer files, bge-m3, bge-reranker-v2-m3, OCR model) into Docker volumes. After it has run once, `docker compose up` MUST work with no internet access.
