@@ -53,7 +53,7 @@ META = re.compile(
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+    return subprocess.run(["git", *args], check=True, capture_output=True, encoding="utf-8").stdout
 
 
 def check_files(paths: list[str]) -> list[str]:

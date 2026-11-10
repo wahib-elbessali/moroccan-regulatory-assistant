@@ -32,12 +32,16 @@ jobs:
       - name: Commits of the push
         if: github.event_name == 'push'
         run: |
-          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+          BEFORE="${{ github.event.before }}"
+          ZERO="0000000000000000000000000000000000000000"
+          if [ "$BEFORE" != "$ZERO" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            RANGE="$BEFORE..${{ github.sha }}"
+          else
+            # New branch, or the previous commit no longer exists (rebase, force push):
+            # check every commit of the branch that main does not have.
             git fetch origin main || true
             RANGE="origin/main..${{ github.sha }}"
             git rev-parse --verify -q origin/main >/dev/null || RANGE="${{ github.sha }}"
-          else
-            RANGE="${{ github.event.before }}..${{ github.sha }}"
           fi
           python scripts/check_contribution_policy.py commits "$RANGE"
       - name: Pull request title and description
