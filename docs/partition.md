@@ -12,7 +12,7 @@ The building work is split into 7 parts of comparable load, developed in paralle
 
 - Public corpus (~500 pages) + 5–6 fictional internal documents + sample private uploads
 - Page-by-page extraction, quality check, OCR through `OCRClient`, extraction cache
-- `normalize_ar` (diacritics, tatweel, alef forms, ى/ي, ة), used by P1, P2, P3, P4 and P6
+- `normalize_ar` (invisible marks, diacritics, tatweel, alef forms, ى/ي, ة), used by P1, P2, P3, P4 and P6
 - One chunk per article with its heading hierarchy, `total_chunks`, source and date; ingestion pipeline with statuses; `seed` command line
 
 **PDF requirements:** F-ING-01, 02, 03, 06, 07 · F-SEC-03

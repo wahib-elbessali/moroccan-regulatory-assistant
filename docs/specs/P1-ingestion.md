@@ -62,15 +62,16 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 - **P1-15** MUST provide `normalize_ar(text: str) -> str` in `src/ingestion/normalize.py`. P2 uses it on queries and P6 uses it before fingerprinting, so the **same function** is applied everywhere. Rules, in this order:
   1. Unicode NFKC (presentation forms → base letters);
-  2. remove diacritics U+064B–U+065F and U+0670;
-  3. remove tatweel U+0640;
-  4. `أ إ آ ٱ` → `ا`;
-  5. `ى` → `ي`;
-  6. `ة` → `ه`;
-  7. Arabic-Indic digits `٠–٩` and Persian digits `۰–۹` → `0–9`;
-  8. lowercase Latin letters;
-  9. replace every punctuation or symbol character (Unicode category starting with `P` or `S`, e.g. `، ؛ ؟ . , / § ° « »`) with a space;
-  10. collapse whitespace, strip.
+  2. remove invisible format characters (Unicode category `Cf`, e.g. the direction marks U+200E, U+200F, U+061C, the joiners U+200C, U+200D, U+FEFF, the soft hyphen U+00AD), which text extraction often leaves inside words;
+  3. remove diacritics U+064B–U+065F and U+0670;
+  4. remove tatweel U+0640;
+  5. `أ إ آ ٱ` → `ا`;
+  6. `ى` → `ي`;
+  7. `ة` → `ه`;
+  8. Arabic-Indic digits `٠–٩` and Persian digits `۰–۹` → `0–9`;
+  9. lowercase Latin letters;
+  10. replace every punctuation or symbol character (Unicode category starting with `P` or `S`, e.g. `، ؛ ؟ . , / § ° « »`) with a space;
+  11. collapse whitespace, strip.
 - **P1-16** MUST NOT stem. Stemming, if any, belongs to P2's BM25 tokenizer.
 - **P1-17** MUST keep `normalize_ar` idempotent: `normalize_ar(normalize_ar(x)) == normalize_ar(x)`.
 
@@ -337,7 +338,7 @@ Each one becomes a pytest in `tests/ingestion/`.
 | T3 | A text with `الباب الأول` › `الفصل الثاني` › `المادة 5` | `chunk_document` | Chunk of article 5 has `hierarchy = ["الباب الأول", "الفصل الثاني"]` |
 | T4 | An article of 3× `max_chunk_chars` | `chunk_document` | ≥ 3 chunks, all with the same `article` |
 | T5 | An article spanning pages 2–3 | `chunk_document` | `page_start = 2`, `page_end = 3` |
-| T6 | `"الْمَادَّةُ"`, `"أحكام"`, `"مسؤولية"`, `"١٢"`, `"ـــالقانون"` | `normalize_ar` | `"الماده"`, `"احكام"`, `"مسؤوليه"`, `"12"`, `"القانون"` |
+| T6 | `"الْمَادَّةُ"`, `"أحكام"`, `"مسؤولية"`, `"١٢"`, `"ـــالقانون"`, `"المادة"` followed by U+200F | `normalize_ar` | `"الماده"`, `"احكام"`, `"مسؤوليه"`, `"12"`, `"القانون"`, `"الماده"` |
 | T7 | Any string | `normalize_ar` twice | Same result as once |
 | T8 | A page in presentation forms (U+FExx) | quality check | Fails → OCR (or NFKC fixes it and it passes) |
 | T9 | A page with reversed words (`ةداملا`) | quality check | Fails |
@@ -370,7 +371,7 @@ Contract tests in `tests/contracts/test_ingestion.py` run T10, T12, T13 and T16 
 |---|---|
 | Digital PDFs, DOCX, HTML, MD, TXT, JPG/PNG | + TIFF, image preprocessing |
 | Chunking by `المادة` / `الفصل`, preamble, long-article split | + `الكتاب` / `القسم` / `الفرع` paths, `مكرر`, ordinal words up to the hundreds |
-| `normalize_ar` (all 10 rules) | — |
+| `normalize_ar` (all 11 rules) | — |
 | OCR through `OCRClient` when the page is empty | + presentation-form and reversed-word checks, header/footer removal, OCR cleaning |
 | Pipeline with statuses, cache, retry; `article` and `fixed` strategies; `date` | — |
 | ~200 pages of corpus + 5 internal documents | ~500 pages |
