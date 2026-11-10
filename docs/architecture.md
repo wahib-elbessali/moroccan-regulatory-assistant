@@ -147,7 +147,7 @@ flowchart LR
 | `llm` | Ollama | `internal` | Models pre-pulled by `make models` |
 | `models` | bge-m3 embeddings + bge-reranker-v2-m3 (HTTP) | `internal` | Always local, in every mode |
 | `ocr` | OCR engine (HTTP) | `internal` | Engine chosen by P1's benchmark |
-| `web-search` | Search proxy + leak filter + leak index | `internal` + `egress` | The only entry point to the internet for the app |
+| `web-search` | Search proxy + leak filter + leak index | `internal` + `egress` | The only entry point to the internet for the app. Volume `leak_data` (the leak index) |
 | `searxng` | Self-hosted search engine, called only by `web-search` | `egress` | No access to `internal` |
 | `cloud-gateway` | Proxy to a cloud LLM/OCR API | `internal` + `egress` | Profile `cloud` only, dev only |
 
@@ -472,7 +472,7 @@ Paths, request and response models: `00-shared.md`. OpenAPI docs are generated a
 | PostgreSQL | `roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests`, `conversations`, `conversation_messages` (schema below) | P5 (single owner of all migrations) |
 | Qdrant | One collection of chunk vectors; payload = the whole chunk + a hidden flag. The only store of chunks | P2 |
 | BM25 | In-memory index over normalized chunk text, rebuilt from Qdrant after every change | P2 |
-| Leak index | HMAC'd n-gram fingerprints + document-frequency stats, inside `web-search` | P6 |
+| Leak index | HMAC'd n-gram fingerprints + document-frequency stats, inside `web-search`, volume `leak_data` | P6 |
 | Extraction cache | `cache/extracted/<doc_id>.json`, volume `extract_cache` of `api` | P1 |
 | Original files | `storage/uploads/<doc_id>.<ext>` on the volume `uploads` of `api` (internal network only), deleted with the document; `<ext>` is the extension of `documents.source_file` | P5 |
 

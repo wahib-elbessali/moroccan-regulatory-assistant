@@ -35,7 +35,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 ### 3.1 Storage
 
-- **P2-01** MUST use **one** Qdrant collection, `retrieval.collection` (default `chunks`), with 1024-dimension vectors and cosine distance. It is created at startup if missing.
+- **P2-01** MUST use **one** Qdrant collection, `retrieval.collection` (default `chunks`), with 1024-dimension vectors and cosine distance. `real_retrieval()` creates it, with its payload indexes, the first time it is called if it is missing, so neither the API nor P1's command line has to do it.
 - **P2-02** MUST store each chunk as one Qdrant point: ID = `chunk_id`, payload = **every field of the `Chunk`** (00-shared §5.2) + `hidden: bool`. `owner_id` is stored as a string, or `null`.
 - **P2-03** MUST create payload indexes on `doc_id`, `allowed_roles`, `owner_id` and `hidden`, so filters stay fast.
 - **P2-04** MUST treat Qdrant as the **only** store. BM25 is rebuilt from Qdrant's payloads (§6.5); P2 keeps no other copy of the chunks.

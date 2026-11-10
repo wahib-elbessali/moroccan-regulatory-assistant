@@ -83,7 +83,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
   3. each 4-gram → `HMAC-SHA256(LEAK_HMAC_KEY, " ".join(gram))`, first 16 hex characters.
 - **P6-30** SHOULD also fingerprint **references** in the text: matches of `(رقم|عدد)((?: \d+)+)` found in the **normalized** text, e.g. `دورية رقم 12/2025` → normalized `رقم 12 2025` (normalization turns `١٢` into `12` and `/` into a space), stored with a `ref:` prefix before hashing.
 - **P6-31** MUST implement `LeakIndex` (00-shared §6.4): `register` stores the document's fingerprints with `blocking = True`; `set_blocking` changes the flag; `delete` removes the document's fingerprints. All three are idempotent.
-- **P6-32** MUST store, per fingerprint, the set of `doc_id`s that contain it and whether each one is blocking, in a file-backed store on the `web-search` volume (SQLite).
+- **P6-32** MUST store, per fingerprint, the set of `doc_id`s that contain it and whether each one is blocking, in a file-backed store (SQLite) on the volume `leak_data` of `web-search`, so the index survives a restart: an empty index would let every query through.
 - **P6-33** MUST count a fingerprint as a **hit** only if it belongs to at least one blocking document **and** to no non-blocking (public) document, and SHOULD also require that it appears in fewer than `leak.max_df` documents. Phrases found in public law (or in many documents) never block.
 - **P6-34** MUST block a query if `hits >= leak.min_hits` **or** `hits / number_of_query_4grams >= leak.overlap_threshold`, **or** it contains any reference hit.
 - **P6-35** MUST read `LEAK_HMAC_KEY` from `.env`, shared by `api` and `web-search`, and never committed.
