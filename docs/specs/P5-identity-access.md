@@ -40,7 +40,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 - **P5-03** MUST provide `src/core/logging.py`: JSON logs on stdout, every line with `timestamp`, `level`, `request_id`, `event` and extra fields.
 - **P5-04** MUST provide `src/core/config.py`: loads `.env` (secrets) and `config.yaml` (everything else) once, exposed as a typed `cfg` object (Pydantic settings). It refuses to start when `retrieval.top_k_final > retrieval.rerank_top_n`.
 - **P5-05** MUST register one exception handler that turns any `AppError` into `{"code", "message"}` with its `http_status` (00-shared §7), and any other exception into `500 {"code": "internal_error"}` without details.
-- **P5-06** MUST expose `GET /health` and allow CORS from the `ui` origin only.
+- **P5-06** MUST expose `GET /health` and allow no cross-origin requests (no CORS headers): the browser reaches the API only through the `ui` service, which forwards `/api/…` to `api:8000` (P7-01).
 - **P5-07** MUST provide `src/core/contracts/registry.py` with every `get_*` function of 00-shared §9, each reading `cfg.contracts.<name>`, returning one cached instance per process, plus `override(name, instance)` and `reset()` for tests (00-shared §9).
 - **P5-08** MUST provide the user fixtures in `tests/conftest.py`: `lecteur_ctx`, `editeur_ctx`, `admin_ctx`, `other_lecteur_ctx`, each with a **fixed** `user_id` written in the file (P1's sample chunks use `lecteur_ctx`'s as an owner).
 

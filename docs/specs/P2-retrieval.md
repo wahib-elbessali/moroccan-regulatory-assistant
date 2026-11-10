@@ -229,7 +229,7 @@ BM25 word statistics (IDF) are computed over the whole index. Only visible chunk
 BM25 is in memory, inside the `api` process. Other processes also write to Qdrant (P1's command line), so P2 uses a version file:
 
 ```python
-VERSION_FILE = "data/indexes/retrieval.version"       # on the shared volume
+VERSION_FILE = "data/indexes/retrieval.version"       # volume `indexes` of `api`
 
 def bump_version():                                    # after every write: index, delete,
     write_atomically(VERSION_FILE, uuid4().hex)        # update_roles, hide, show

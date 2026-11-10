@@ -140,7 +140,7 @@ flowchart LR
 
 | Service | Content | Networks | Notes |
 |---|---|---|---|
-| `api` | FastAPI app: P1, P2, P3, P4, P5 and the P6 web agent code | `internal` + `front` | Publishes `:8000` to the host (OpenAPI docs) |
+| `api` | FastAPI app: P1, P2, P3, P4, P5 and the P6 web agent code; also runs P1's command line | `internal` + `front` | Publishes `:8000` to the host (OpenAPI docs). Volumes `uploads` → `storage/uploads`, `extract_cache` → `cache/extracted`, `indexes` → `data/indexes`; `data/raw` (the corpus) mounted read-only |
 | `ui` | P7 app | `internal` + `front` | Publishes its port to the host |
 | `postgres` | PostgreSQL | `internal` | Volume `pg_data` |
 | `qdrant` | Qdrant | `internal` | Volume `qdrant_data` |
@@ -473,8 +473,8 @@ Paths, request and response models: `00-shared.md`. OpenAPI docs are generated a
 | Qdrant | One collection of chunk vectors; payload = the whole chunk + a hidden flag. The only store of chunks | P2 |
 | BM25 | In-memory index over normalized chunk text, rebuilt from Qdrant after every change | P2 |
 | Leak index | HMAC'd n-gram fingerprints + document-frequency stats, inside `web-search` | P6 |
-| Extraction cache | `cache/extracted/<doc_id>.json` | P1 |
-| Original files | `storage/uploads/<doc_id>.<ext>` on a volume of `api` (internal network only), deleted with the document; `<ext>` is the extension of `documents.source_file` | P5 |
+| Extraction cache | `cache/extracted/<doc_id>.json`, volume `extract_cache` of `api` | P1 |
+| Original files | `storage/uploads/<doc_id>.<ext>` on the volume `uploads` of `api` (internal network only), deleted with the document; `<ext>` is the extension of `documents.source_file` | P5 |
 
 Other parts never write to a store they don't own; they call the owner's function.
 
