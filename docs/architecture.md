@@ -28,7 +28,7 @@ Roles come from the `roles` table: `admin`, `editeur`, `lecteur`. Each user has 
 |---|---|---|---|
 | `lecteur` | A citizen | Ask questions, upload private documents | Public documents + their own uploads |
 | `editeur` | A jurist of the administration | Ask questions, add corpus documents and set their visibility (an editor's upload always goes to the corpus) | Public + internal documents |
-| `admin` | The administrator | Accounts, roles, account requests, web search per role, document roles, audit log | No corpus content, no private uploads |
+| `admin` | The administrator | Accounts, roles, account requests, web search per role, document roles, deleting corpus documents, audit log | No corpus content, no private uploads |
 
 A document is visible to the roles listed for it in `document_roles`:
 
@@ -455,9 +455,10 @@ classDiagram
 | Upload a document | `editeur`, or any user for a private upload | P5 → P1 |
 | List documents (own uploads; the corpus for `editeur` and `admin`) | any user | P5 |
 | Document status | uploader or `editeur` | P5 |
-| Delete a document | `editeur`, or the uploader | P5 → P1 |
+| Delete a document | the uploader; `editeur` or `admin` for a corpus document | P5 → P1 |
 | `/search` | any user | P2 |
 | `/ask` (SSE), with a per-question `use_web` toggle | any user | P3 |
+| Conversation history: list, create, open, add an exchange, delete | the owner only | P5 |
 | `AdminController`: `list_users`, `create_user`, `update_user_role`, `set_user_active`, `list_roles`, `set_document_roles`, `get_audit_trail`, `list_account_requests`, `approve_account_request`, `reject_account_request`, `set_role_web` | `admin` (`require_roles([admin])`) | P5 |
 
 Paths, request and response models: `00-shared.md`. OpenAPI docs are generated at `/docs`.
@@ -468,7 +469,7 @@ Paths, request and response models: `00-shared.md`. OpenAPI docs are generated a
 
 | Store | Holds | Owner |
 |---|---|---|
-| PostgreSQL | `roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests` (schema below) | P5 (single owner of all migrations) |
+| PostgreSQL | `roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests`, `conversations`, `conversation_messages` (schema below) | P5 (single owner of all migrations) |
 | Qdrant | One collection of chunk vectors; payload = the whole chunk + a hidden flag. The only store of chunks | P2 |
 | BM25 | In-memory index over normalized chunk text, rebuilt from Qdrant after every change | P2 |
 | Leak index | HMAC'd n-gram fingerprints + document-frequency stats, inside `web-search` | P6 |
@@ -487,6 +488,8 @@ erDiagram
     users ||--o{ audit_log : "1 à N"
     users |o--o{ account_requests : "décide"
     users |o--o{ documents : "possède (uploads privés)"
+    users ||--o{ conversations : "1 à N"
+    conversations ||--o{ conversation_messages : "1 à N"
 
     roles {
         INT id PK
@@ -539,6 +542,22 @@ erDiagram
         TIMESTAMP created_at
         UUID decided_by FK "nullable"
         TIMESTAMP decided_at "nullable"
+    }
+    conversations {
+        UUID id PK
+        UUID user_id FK "the owner"
+        VARCHAR title "nullable: first question, cut to 60 characters"
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    conversation_messages {
+        BIGINT id PK
+        UUID conversation_id FK "ON DELETE CASCADE"
+        INT position "1, 2, 3… within the conversation"
+        TEXT question
+        JSONB answer "the Answer as /ask returned it"
+        VARCHAR[] cited_doc_ids "doc_ids of the answer's citations"
+        TIMESTAMP created_at
     }
 ```
 

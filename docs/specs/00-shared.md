@@ -493,9 +493,14 @@ class ServiceError(AppError):    code, http_status = "service_error", 503
 | POST | `/documents` | multipart: `file`, `title`, `source` (optional), `date` (optional), `roles` (editors only, sent as repeated fields: `roles=lecteur&roles=editeur`); at most `uploads.max_bytes` | `202 {doc_id, status}` | `editeur`; any user for a private upload |
 | GET | `/documents` | — | `list[DocumentResponse]` | any user (see below) |
 | GET | `/documents/{doc_id}/status` | — | `{doc_id, status, error, duplicate_of}` | uploader; `editeur` (corpus documents) |
-| DELETE | `/documents/{doc_id}` | — | `204` | uploader; `editeur` (corpus documents) |
+| DELETE | `/documents/{doc_id}` | — | `204` | uploader; `editeur` and `admin` (corpus documents) |
 | POST | `/search` | `{query, top_k}` | `list[Passage]` | any user |
 | POST | `/ask` | `{question, use_web: bool = true}` | SSE stream (§5.7) | any user |
+| GET | `/conversations` | — | `list[ConversationResponse]` | any user (own conversations) |
+| POST | `/conversations` | — | `201 ConversationResponse` | any user |
+| GET | `/conversations/{conversation_id}` | — | `ConversationDetail` | owner |
+| POST | `/conversations/{conversation_id}/messages` | `MessageIn` | `201 MessageResponse` | owner |
+| DELETE | `/conversations/{conversation_id}` | — | `204` | owner |
 | GET | `/admin/users` | — | `list[UserResponse]` | `admin` |
 | POST | `/admin/users` | `UserCreate` | `UserResponse` | `admin` |
 | PATCH | `/admin/users/{user_id}/role` | `{role_id}` | `UserResponse` | `admin` |
@@ -575,6 +580,36 @@ class AccountRequestResponse(BaseModel):
 
 - A request does not create a user. The user is created only when an admin approves it, with the role the admin chooses.
 - Until then the person cannot log in: `/auth/login` answers the same `401` as for an unknown username.
+
+**Conversation history models**
+
+```python
+class ConversationResponse(BaseModel):
+    conversation_id: UUID
+    title: str | None            # the first question, cut to 60 characters; None before it
+    created_at: datetime
+    updated_at: datetime         # time of the last exchange
+
+class MessageIn(BaseModel):
+    question: str                # as sent to /ask
+    answer: Answer               # as received in the `answer` event (§5.7)
+
+class MessageResponse(BaseModel):
+    position: int                # 1, 2, 3… within the conversation
+    question: str
+    available: bool              # False: a cited document is no longer visible to the user
+    answer: Answer | None        # None when available is False
+    language: str                # answer.language, kept to show the notice below
+    created_at: datetime
+
+class ConversationDetail(ConversationResponse):
+    messages: list[MessageResponse]  # by position
+```
+
+- A conversation belongs to one user. Every route answers `404` for another user's conversation, never `403`. No route lets the admin read conversations.
+- The API saves what P7 sends; it never sends earlier exchanges to `/ask`. Each question is still answered alone.
+- Saved: the question and the `Answer`. Never the thinking stream or the passages.
+- When a conversation is opened, an exchange is `available` only if every document cited in its answer still exists, is `ready`, and is visible to this user (owner, or the user's role in `document_roles`). Otherwise `answer` is `None` and P7 shows the fixed notice "هذه الإجابة لم تعد متاحة." ("Cette réponse n'est plus disponible." for `language = "fr"`). A deleted document and a restricted one give the same result. An answer that cites no document (`unknown`, or web only) is always available.
 
 ---
 

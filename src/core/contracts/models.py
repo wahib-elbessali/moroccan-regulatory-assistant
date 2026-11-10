@@ -196,3 +196,28 @@ class RoleResponse(BaseModel):
     role_id: int
     name: str
     web_enabled: bool
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: UUID
+    title: str | None  # the first question, cut to 60 characters; None before it
+    created_at: datetime
+    updated_at: datetime  # time of the last exchange
+
+
+class MessageIn(BaseModel):
+    question: str  # as sent to /ask
+    answer: Answer  # as received in the `answer` event (00-shared §5.7)
+
+
+class MessageResponse(BaseModel):
+    position: int  # 1, 2, 3… within the conversation
+    question: str
+    available: bool  # False: a cited document is no longer visible to the user
+    answer: Answer | None  # None when available is False
+    language: str  # answer.language, kept to show the "no longer available" notice
+    created_at: datetime
+
+
+class ConversationDetail(ConversationResponse):
+    messages: list[MessageResponse]  # by position

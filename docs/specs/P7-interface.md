@@ -74,7 +74,8 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 - **P7-19** MUST show an `error` event's `message` in place of the answer, and stop waiting at `done`.
 - **P7-20** MUST show the web search toggle next to the question box when `web_available` is true: **on by default**, remembered in the browser, sent as `use_web` with every question. When `web_available` is false, the toggle is hidden and `use_web` is sent as `false`.
 - **P7-21** MUST disable the send button while a question is running, and refuse an empty question or one longer than `agents.max_question_chars` before sending (the API refuses it too).
-- **P7-22** MUST keep the conversation of the current session on screen (questions and answers, newest at the bottom). Each question is still sent alone: the API has no conversation memory.
+- **P7-22** MUST keep the conversation on screen (questions and answers, newest at the bottom) and save it: create a conversation (`POST /conversations`) at the first question, and after each `answer` event send the question and the `Answer` to `POST /conversations/{conversation_id}/messages`. Each question is still sent alone to `/ask`: earlier exchanges are never sent with it.
+- **P7-22b** MUST provide a history list (`GET /conversations`: title, date, newest first) to open an earlier conversation (`GET /conversations/{conversation_id}`), start a new one, or delete one (`DELETE`, after an in-page confirmation). An opened exchange is shown like a live answer (P7-17, P7-18); one with `available = false` shows only its question and the fixed notice of 00-shared §8, with no citation and no confidence.
 
 ### 3.6 Documents
 
@@ -84,7 +85,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 - **P7-24** MUST accept only the formats P1 accepts (PDF, DOCX, HTML, MD, TXT, PNG, JPG/JPEG, TIFF) in the file picker, and show the API's error otherwise.
 - **P7-25** MUST, after `202`, follow the document with `GET /documents/{doc_id}/status` every 2 s until `ready` or `failed`, showing the current step (`received`, `extracting`, `chunked`, `indexed`, `ready`) and, for `failed`, the `error` with "delete the document and upload it again".
 - **P7-26** MUST show a warning when `duplicate_of` is not empty: "a document with the same text already exists", with links to those documents' status.
-- **P7-27** MUST provide a "documents" list from `GET /documents`: title, original file name, source, status, visibility (public, internal, private), with a delete action (`DELETE /documents/{doc_id}`) after a confirmation **inside the page** (not a browser dialog). A `409` while processing shows "the document is still being processed".
+- **P7-27** MUST provide a "documents" list from `GET /documents`: title, original file name, source, status, visibility (public, internal, private), with a delete action (`DELETE /documents/{doc_id}`) after a confirmation **inside the page** (not a browser dialog). The admin gets the same delete action on corpus documents, on the document roles screen. A `409` while processing shows "the document is still being processed".
 - **P7-28** MUST offer changing a document's roles only to the roles allowed by the access column of `PUT /admin/documents/{doc_id}/roles` in 00-shared §8 (today: `admin` only, on the admin screen).
 
 ### 3.7 Admin
@@ -93,7 +94,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
   - **users**: list (`GET /admin/users`), create (`POST /admin/users`), change role (`PATCH /admin/users/{user_id}/role`), deactivate or reactivate (`PATCH /admin/users/{user_id}/active`);
   - **account requests**: list of `pending` requests (`GET /admin/account-requests?status=pending`) with username, full name, date; approve with a role chosen from `GET /admin/roles` (no default), or reject, each after an in-page confirmation;
   - **web search per role**: one switch per role from `GET /admin/roles`, calling `PATCH /admin/roles/{role_id}/web`;
-  - **document roles**: for a corpus document from `GET /documents`, choose public or internal and call `PUT /admin/documents/{doc_id}/roles`;
+  - **document roles**: for a corpus document from `GET /documents`, choose public or internal and call `PUT /admin/documents/{doc_id}/roles`, or delete it (`DELETE /documents/{doc_id}`, after an in-page confirmation);
   - **audit log**: `GET /admin/audit`, newest first, showing the fields of `AuditLogResponse` as they come.
 - **P7-30** MUST show the admin no chat and no document content: the admin's screens are the ones above.
 
@@ -101,17 +102,17 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 - **P7-31** MUST display every text that comes from the API (answer, thinking, excerpt, title, file name, source, error, audit details) as **plain text**: never as HTML, never through a Markdown renderer that allows raw HTML. Document text can contain anything.
 - **P7-32** MUST make a link only from a citation's `url`, and only if it starts with `http://` or `https://`. A `source` that looks like a URL is shown as text.
-- **P7-33** MUST NOT log, store or send anywhere else the questions, answers or passwords. The question box is cleared on sign-out.
+- **P7-33** MUST NOT log, store or send the questions, answers or passwords anywhere other than the API (the history is saved only through `/conversations`). The question box and the displayed conversation are cleared on sign-out.
 
 ### 3.9 Screens by role
 
 | Screen | `lecteur` | `editeur` | `admin` | No token |
 |---|---|---|---|---|
 | Sign in, request an account | | | | ✓ |
-| Chat | ✓ | ✓ | | |
+| Chat, with the history list | ✓ | ✓ | | |
 | Upload | ✓ (private) | ✓ (public / internal) | | |
 | Documents | ✓ (own uploads) | ✓ (corpus) | | |
-| Users, account requests, web per role, document roles, audit log | | | ✓ | |
+| Users, account requests, web per role, document roles and deletion, audit log | | | ✓ | |
 
 ```mermaid
 flowchart LR
@@ -120,12 +121,12 @@ flowchart LR
     SI -->|editeur| E
     SI -->|admin| A
     subgraph L["lecteur"]
-        L1["Chat"]
+        L1["Chat and history"]
         L2["Upload, private"]
         L3["My documents"]
     end
     subgraph E["editeur"]
-        E1["Chat"]
+        E1["Chat and history"]
         E2["Upload, public or internal"]
         E3["Corpus documents"]
     end
@@ -133,7 +134,7 @@ flowchart LR
         A1["Users"]
         A2["Account requests"]
         A3["Web search per role"]
-        A4["Document roles"]
+        A4["Document roles and deletion"]
         A5["Audit log"]
     end
     L1 --> CIT["Citation panel"]
@@ -161,6 +162,7 @@ flowchart LR
 | `POST /documents`, `GET /documents`, `GET /documents/{doc_id}/status`, `DELETE /documents/{doc_id}` | P5 | Upload and documents |
 | `/admin/*` routes | P5 | Admin screens |
 | `POST /ask` (SSE events of 00-shared §5.7) | P3 | Chat |
+| `/conversations` routes | P5 | Saving and reopening the history |
 | `Answer`, `Citation` | P4, through P3 | Displaying answers |
 | `FakeOrchestrator` (`contracts.orchestrator: fake`) | P3 | Building the chat before the real graph exists |
 | Error format `{"code", "message"}` and HTTP statuses | 00-shared §7 | Messages |
@@ -319,6 +321,9 @@ Automated tests use the stack's usual tool and run in CI; the API is the real on
 | T20 | Internet cut off on the demo machine **(manual)** | Every screen | Everything loads, the Arabic font included |
 | T21 | Full demo path: request an account → admin approves as `lecteur` → sign in → upload a private PDF → ready → ask about it → click a citation **(manual)** | — | Each step works with the real system |
 | T22 | Admin turns web off for `lecteur` **(manual)** | `lecteur`'s chat, after reloading | Toggle hidden |
+| T23 | Two questions answered (mock) | — | `POST /conversations` once, then `POST …/messages` twice with each question and its `Answer` |
+| T24 | `GET /conversations/{id}` with one exchange `available = false` (mock) | Open the conversation | That exchange: question and the fixed notice only, no citation, no confidence; the others shown normally |
+| T25 | Ask, reload the page, open the history **(manual)** | — | The conversation is listed and reopens with its citations |
 
 ---
 
@@ -327,9 +332,9 @@ Automated tests use the stack's usual tool and run in CI; the API is the real on
 | Minimum (must work for validation) | Full |
 |---|---|
 | Sign in, sign out, `401` handling | + account request form |
-| Chat with conversation history, live thinking, answer, clickable citations, confidence, web toggle | — |
+| Chat with saved conversation history (list, reopen, delete), live thinking, answer, clickable citations, confidence, web toggle | — |
 | Upload with status following; documents list with delete | + duplicate warning |
-| Admin: account requests, users (create, role, deactivate), document roles, audit log | + web per role screen |
+| Admin: account requests, users (create, role, deactivate), document roles and deletion, audit log | + web per role screen |
 | RTL with `dir="auto"`, bundled Arabic font, Arabic labels | + French labels with a switch |
 | Plain-text display, safe links, offline | — |
 
@@ -347,9 +352,9 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 | 3 | Thu 11-12 | Chat: thinking block, answer, clickable citations, confidence, web toggle, RTL |
 | 4 | Fri 11-13 | Upload and documents; account request form |
 | 5 | Sat 11-14 | **Checkpoint:** every screen of §3.9 against the API with fakes; T1–T18 green |
-| 6 | Sun 11-15 | Admin screens finished; `docs/demo.md` drafted |
+| 6 | Sun 11-15 | Admin screens finished (document deletion included); conversation history (P7-22, P7-22b) on P5's routes; `docs/demo.md` drafted |
 | 7 | Mon 11-16 | On the real API |
-| 8 | Tue 11-17 | **Checkpoint:** against the real system; `docs/demo.md` checklist written; T19–T22 ticked; all tests green |
+| 8 | Tue 11-17 | **Checkpoint:** against the real system; `docs/demo.md` checklist written; T19–T22 and T25 ticked; all tests green |
 | 9 | Wed 11-18 | **Feature freeze.** Read the first evaluation results; list this part's problems |
 | 10 | Thu 11-19 | Tune this part's values (schedule.md §3) and fix bugs · UI checked on the demo machine, internet off; P7 leads the demo |
 | 11 | Fri 11-20 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |

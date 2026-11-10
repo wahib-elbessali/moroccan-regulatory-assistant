@@ -55,7 +55,7 @@ The building work is split into 7 parts of comparable load, developed in paralle
 
 - FastAPI skeleton, `get_*` registry, test fixtures; PostgreSQL and migrations
 - JWT + Argon2 authentication; roles `admin` / `editeur` / `lecteur`; account requests
-- Upload, statuses, publication, deletion; web search switch per role; audit log
+- Upload, statuses, publication, deletion; web search switch per role; audit log; saved conversation history
 - Mandatory test (a) end to end: no chunk of another role or another user is ever retrieved
 
 **PDF requirements:** F-SEC-01, 02, 05, 06, 07, 12a · T-07, T-08, T-13 → 15
@@ -75,7 +75,7 @@ The building work is split into 7 parts of comparable load, developed in paralle
 
 **Hard core:** the live SSE stream, right-to-left display, no document text ever displayed as HTML.
 
-- Chat with session history, thinking block, answer, clickable citations, confidence
+- Chat with saved conversation history, thinking block, answer, clickable citations, confidence
 - Web search toggle; upload and status follow-up; document list and deletion
 - Account request form; administration screens
 - Works without internet (Arabic font included); stack chosen by P7

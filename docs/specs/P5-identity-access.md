@@ -23,8 +23,9 @@ Provide the **API backbone** every other part plugs into, and own **everything a
 | `AuditService` and the audit log | Login and admin screens (P7) |
 | `AdminController` | Deciding whether a question needs the web (P3) |
 | Original uploaded files | |
+| Conversation history (`conversations`, `conversation_messages`) and its routes | The chat screens that use it (P7) |
 
-Code: `src/api/main.py`, `src/api/deps.py`, `src/api/routes/{auth,documents,admin}.py`, `src/core/{config,logging,security,audit}.py`, `src/core/db/`, `src/core/contracts/registry.py`. Tests: `tests/access/`, `tests/e2e/`.
+Code: `src/api/main.py`, `src/api/deps.py`, `src/api/routes/{auth,documents,admin,conversations}.py`, `src/core/{config,logging,security,audit}.py`, `src/core/db/`, `src/core/contracts/registry.py`. Tests: `tests/access/`, `tests/e2e/`.
 
 ---
 
@@ -45,7 +46,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 ### 3.2 Database
 
-- **P5-09** MUST implement the six tables of architecture §12 exactly (`roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests`) as SQLAlchemy models in `src/core/db/models.py`, with Alembic migrations in `src/core/db/migrations/`.
+- **P5-09** MUST implement the eight tables of architecture §12 exactly (`roles`, `users`, `documents`, `document_roles`, `audit_log`, `account_requests`, `conversations`, `conversation_messages`) as SQLAlchemy models in `src/core/db/models.py`, with Alembic migrations in `src/core/db/migrations/`.
 - **P5-10** MUST be the only part that writes migrations. Another part needing a column asks P5.
 - **P5-11** MUST seed, in a migration, the three rows of `roles` (`admin`, `editeur`, `lecteur`) with a description and `web_enabled = true`.
 - **P5-12** MUST create the first admin at startup from `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env` if no admin exists.
@@ -79,10 +80,20 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 - **P5-27** MUST compute `blocking = not is_public(roles)` (`is_public(roles)` = `"lecteur" in roles`, in `src/core/security.py`). A private document (`roles = []`) is always blocking.
 - **P5-28** MUST implement `set_status` with the transitions of 00-shared §3, raising `InvalidInput` on any other transition, plus `get_status` (00-shared §6.1).
 - **P5-28b** MUST implement `set_content_hash(doc_id, content_hash)` (00-shared §6.1).
-- **P5-29** MUST implement `GET /documents/{doc_id}/status` and `DELETE /documents/{doc_id}`. The status response has `duplicate_of`: the IDs of other documents with the same `content_hash` **in the same scope only** (other corpus documents for a corpus document, the same owner's uploads for a private one), `[]` otherwise, so it never reveals another user's document. Both answer `NotFound` (never `Forbidden`) to a user who may not see the document.
+- **P5-29** MUST implement `GET /documents/{doc_id}/status` and `DELETE /documents/{doc_id}` (access: the uploader; for a corpus document, also `editeur` and `admin`; a private upload answers `NotFound` to anyone but its owner, the admin included). The status response has `duplicate_of`: the IDs of other documents with the same `content_hash` **in the same scope only** (other corpus documents for a corpus document, the same owner's uploads for a private one), `[]` otherwise, so it never reveals another user's document. Both answer `NotFound` (never `Forbidden`) to a user who may not see the document.
 - **P5-29c** MUST implement `GET /documents` → `list[DocumentResponse]` (00-shared §8): the user's own private uploads for every user, plus all corpus documents for `editeur` and `admin`; never another user's private upload. Newest first.
 - **P5-30** MUST delete in this order: P2 `hide` → P1 `delete` → remove the file → delete the `document_roles` and `documents` rows → `log_action(DOCUMENT_DELETE)`. The `documents` row is deleted **after** P1's `delete`, which reads it.
 - **P5-30b** MUST refuse `DELETE` with `Conflict("document is being processed")` while the status is `received`, `extracting` or `chunked`, so a deletion never races with a running ingestion.
+
+### 3.5b Conversation history (`src/api/routes/conversations.py`)
+
+The chat history required by the PDF (F-UI-01). It is shown again to its owner; it is never sent to the agents.
+
+- **P5-45** MUST implement the five `/conversations` routes of 00-shared §8. Each one only finds conversations whose `user_id` is `ctx.user_id`; any other `conversation_id` answers `NotFound`, exactly as an unknown one. `GET /conversations` lists the user's conversations, most recently updated first.
+- **P5-46** MUST, on `POST /conversations/{id}/messages`: refuse an empty question or one longer than `agents.max_question_chars` (`InvalidInput`); store the question and the `Answer` as received; set `position` to the next number; set `cited_doc_ids` to the distinct non-null `doc_id`s of `answer.citations` (computed by P5, never sent by the client); set the conversation's `title` from the first question (cut to 60 characters) if it has none; update `updated_at`.
+- **P5-47** MUST, on `GET /conversations/{id}`, check every exchange as in §6.8: `available` only if each cited document exists, is `ready`, and is visible to the user (owner, or `ctx.role` in its `document_roles`). Otherwise `answer = None`. The check reads P5's own tables; it never calls P2.
+- **P5-48** MUST NOT store the thinking stream, passages or web queries, and MUST NOT offer any route that lets one user, the admin included, read another user's conversations.
+- **P5-49** MUST delete a conversation's messages with it (`ON DELETE CASCADE`). Deleting a document does not touch conversations: the check of P5-47 hides the affected answers.
 
 ### 3.6 Administration (`AdminController`, `src/api/routes/admin.py`)
 
@@ -125,7 +136,7 @@ Anyone can ask for an account; only the admin creates it. The admin keeps `creat
 | `get_current_user_context`, `require_roles`, `record_audit_event` | 00-shared §6.1 | Every route |
 | `DocumentRights` (`set_document_roles`, `set_status`, `get_status`, `set_content_hash`, `create_document`) | 00-shared §6.1 | P1 (`create_document`: its command line) |
 | `Audit` (`log_query`, `log_action`) | 00-shared §6.1 | P1, P3, P6 |
-| HTTP API (`/auth`, `/documents`, `/admin`) | 00-shared §8 | P7 |
+| HTTP API (`/auth`, `/documents`, `/conversations`, `/admin`) | 00-shared §8 | P7 |
 | `registry.py`, user fixtures, `cfg`, logging | this spec, §3.1 | Everyone |
 | `FakeDocumentRights`, `FakeAudit` | 00-shared §9 | P1, P3, P6 |
 
@@ -299,7 +310,8 @@ For a private document (`roles = []`), `show` makes it visible only to its owner
 @router.delete("/documents/{doc_id}", status_code=204)
 def delete(doc_id: str, ctx = Depends(get_current_user_context)):
     doc = get_document_or_404(doc_id)
-    if not (ctx.role == "editeur" and doc.owner is None) and doc.owner != ctx.user_id:
+    corpus_manager = ctx.role in ("editeur", "admin") and doc.owner is None
+    if not corpus_manager and doc.owner != ctx.user_id:
         raise NotFound("not found")                                # never reveal existence
     if get_status(doc_id) in (RECEIVED, EXTRACTING, CHUNKED):
         raise Conflict("document is being processed")              # P5-30b
@@ -372,6 +384,31 @@ def reject_account_request(request_id: UUID,
 
 `/auth/login` (§6.3) reads only `users`, so a pending or rejected requester is treated as an unknown username with no extra code.
 
+### 6.8 Opening a conversation
+
+```python
+@router.get("/conversations/{conversation_id}")
+def open_conversation(conversation_id: UUID, ctx = Depends(get_current_user_context)):
+    conv = db.get(Conversation, conversation_id)
+    if conv is None or conv.user_id != ctx.user_id:
+        raise NotFound("not found")                                # same for missing and not yours
+    visible = visible_doc_ids(ctx, all_cited_ids(conv))            # one query on documents + document_roles
+    out = []
+    for m in conv.messages:                                        # by position
+        ok = all(d in visible for d in m.cited_doc_ids)
+        out.append(MessageResponse(position=m.position, question=m.question, available=ok,
+                                   answer=m.answer if ok else None,
+                                   language=m.answer["language"], created_at=m.created_at))
+    return ConversationDetail(..., messages=out)
+
+def visible_doc_ids(ctx, doc_ids) -> set[str]:
+    # documents that exist, are ready, and that this user may see
+    return {d.id for d in documents_with_ids(doc_ids) if d.status == "ready"
+            and (d.owner_id == ctx.user_id or ctx.role in roles_of(d))}
+```
+
+A deleted document is simply absent from `visible`, so its answers become unavailable exactly like a restricted one.
+
 ---
 
 ## 7. Error handling
@@ -382,6 +419,8 @@ def reject_account_request(request_id: UUID,
 | Deactivated or deleted user with a valid token | `401 Unauthenticated` on the next request |
 | Role not allowed on a route | `403 Forbidden` |
 | Document the user may not see | `404 NotFound`, same message as a missing document |
+| Another user's conversation | `404 NotFound`, same message as a missing conversation |
+| Saved exchange whose cited document is no longer visible | `available = false`, `answer = None` (P5-47) |
 | Same file uploaded twice in the same scope | `409 Conflict` |
 | Unknown role in `roles` | `422 InvalidInput` |
 | Editor uploads with no role | `422 InvalidInput` |
@@ -458,6 +497,13 @@ Each one becomes a pytest in `tests/access/` or `tests/e2e/`, through HTTP (Fast
 | T44 | Any `log_action` during a request | Inspect `audit_log` | `request_id` = the request's `X-Request-ID` |
 | T45 | A document left `extracting` when the API stopped | API restarts | Status `failed`, error `"interrupted"`; it can be deleted |
 | T46 | One active admin | They change their own role, or deactivate themselves | `422`; nothing changed |
+| T47 | A corpus document; a citizen's private upload | Admin `DELETE` on each | `204`, deletion done and audited; `404` on the upload, nothing changed |
+| T48 | User A's conversation | User B (any role, admin included) calls `GET`, `POST …/messages`, `DELETE` on it | `404` each time; nothing changed |
+| T49 | An empty conversation | Post two exchanges, then open it | `position` 1 and 2; `title` = first question (≤ 60 characters); `updated_at` changed; `cited_doc_ids` stored from the citations |
+| T50 | A `lecteur`'s saved answer citing a public document | Admin sets the document to internal, then the `lecteur` opens the conversation | That exchange: `available = false`, `answer = None`, question kept; the others unchanged |
+| T51 | Same, but the document is deleted; and a posted answer citing a `doc_id` that does not exist | Open the conversation | Both: `available = false`, identical responses |
+| T52 | A saved `unknown` answer and a web-only answer | Any document change, then open | Both still available |
+| T53 | Two users with conversations | `GET /conversations` as each | Only their own, most recently updated first |
 
 Contract tests in `tests/contracts/` run on fake and real: `DocumentRights` (T10, T14, publication order), `Audit` (an entry is written, T16).
 
@@ -468,12 +514,13 @@ Contract tests in `tests/contracts/` run on fake and real: `DocumentRights` (T10
 | Minimum (must work for validation) | Full |
 |---|---|
 | Skeleton, middleware, error handler, config, logging, registry, fixtures | — |
-| Six tables + migrations, roles seeded, first admin | — |
+| The eight tables + migrations, roles seeded, first admin | — |
 | Login, Argon2, JWT, `get_current_user_context` re-reading the DB, `require_roles` | + login rate limit |
 | `create_document`, upload, status, delete, `GET /documents`, `GET /auth/me`, `set_document_roles` with the full sequence and the ownership check | + `uploads.max_bytes` |
 | `create_user`, `update_user_role`, `set_user_active`, `get_audit_trail`, `GET /admin/users`, `GET /admin/roles` | + filters on the audit trail |
 | Account requests: request, list, approve, reject | + `max_pending_requests` cap |
 | `log_query`, `log_action` | — |
+| Conversation history: two tables, five routes, owner-only access, the check on read | — |
 | T1, T3, T6, T7, T8, T9, T10, T13, T21–T24 | All tests |
 
 ---
@@ -484,12 +531,12 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
-| 0 | Mon 11-09 | Read the docs; prepare the skeleton and the six tables |
+| 0 | Mon 11-09 | Read the docs; prepare the skeleton and the first six tables |
 | 1 | Tue 11-10 | **Checkpoint:** skeleton with every router mounted, middleware, error handler, `cfg`, logging, `registry.py`, user fixtures, `FakeDocumentRights`, `FakeAudit` + contract tests |
-| 2 | Wed 11-11 | **Checkpoint:** six tables + migrations, roles seeded, first admin; login and `get_current_user_context` working; `audited_stream` merged |
-| 3 | Thu 11-12 | `create_document`, upload, status, delete, `GET /documents`, `/auth/me` |
-| 4 | Fri 11-13 | `set_document_roles`, admin routes, account requests, startup cleanup |
-| 5 | Sat 11-14 | **Checkpoint:** upload, status, delete, `set_document_roles` against fakes of P1, P2, P6; admin routes including account requests; `/auth/me`, `GET /documents`, `GET /admin/users`, `GET /admin/roles`; T1–T6, T11–T15, T21–T30, T35–T38, T40–T46 green |
+| 2 | Wed 11-11 | **Checkpoint:** the first six tables (the two conversation tables come on day 4) + migrations, roles seeded, first admin; login and `get_current_user_context` working; `audited_stream` merged |
+| 3 | Thu 11-12 | `create_document`, upload, status, delete (admin included for corpus documents), `GET /documents`, `/auth/me` |
+| 4 | Fri 11-13 | `set_document_roles`, admin routes, account requests, startup cleanup; conversation tables (migration) and routes |
+| 5 | Sat 11-14 | **Checkpoint:** upload, status, delete, `set_document_roles` against fakes of P1, P2, P6; admin routes including account requests; `/auth/me`, `GET /documents`, `GET /admin/users`, `GET /admin/roles`; conversation routes; T1–T6, T11–T15, T21–T30, T35–T38, T40–T53 green |
 | 6 | Sun 11-15 | With P1 and P2: upload → ingestion → publication on the real parts |
 | 7 | Mon 11-16 | With P6: real `set_blocking`; end-to-end test (T39) written |
 | 8 | Tue 11-17 | **Checkpoint:** against the real P1, P2, P6: T7–T10, T17, T39 green (mandatory test a, end-to-end test); all tests green |

@@ -88,3 +88,20 @@ def test_detect_language(text, expected):
 def test_errors():
     assert InvalidInput("x").http_status == 422
     assert LeakBlocked("x", hits=3).hits == 3
+
+
+def test_conversation_message_hides_answer_when_unavailable():
+    from datetime import UTC, datetime
+
+    from src.core.contracts import Answer, ConversationDetail, MessageIn, MessageResponse
+
+    answer = Answer(status="unknown", text="نص", citations=[], confidence=0.0, language="ar")
+    MessageIn(question="سؤال", answer=answer)
+    now = datetime.now(UTC)
+    hidden = MessageResponse(
+        position=1, question="سؤال", available=False, answer=None, language="ar", created_at=now
+    )
+    detail = ConversationDetail(
+        conversation_id=uuid.uuid4(), title=None, created_at=now, updated_at=now, messages=[hidden]
+    )
+    assert detail.messages[0].answer is None
