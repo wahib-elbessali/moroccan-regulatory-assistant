@@ -2,6 +2,7 @@
 
 Covers acceptance tests T6, T7 and extensive edge cases:
 - Empty and whitespace-only strings
+- Invisible format characters removal (Unicode category Cf: RLM, LRM, ZWNJ, ZWJ, BOM, ALM, SHY)
 - Arabic-Indic and Persian digits
 - Arabic punctuation (، ؛ ؟) and symbols
 - Arabic presentation forms (U+FB50–U+FDFF, U+FE70–U+FEFF)
@@ -30,6 +31,7 @@ from src.ingestion.normalize import normalize_ar
         ("مسؤولية", "مسؤوليه"),
         ("١٢", "12"),
         ("ـــالقانون", "القانون"),
+        ("المادة\u200f", "الماده"),  # "المادة" followed by U+200F (RLM)
     ],
 )
 def test_acceptance_t6_rules(input_text: str, expected: str) -> None:
@@ -55,6 +57,7 @@ def test_acceptance_t6_rules(input_text: str, expected: str) -> None:
         "ﭐ ﭤ ﭥ ﭦ ﭧ ﭨ",  # Presentation forms A
         "ﺀ ﺁ ﺂ ﺃ ﺄ ﺅ ﺆ ﺇ ﺈ ﺉ ﺊ ﺋ ﺌ",  # Presentation forms B
         "المادة 12: تطبق على عقد الزواج المشوب بإكراه أو تدليس الأحكام المنصوص عليها.",
+        "المادة\u200f 12\u200e \u200cالقانون\u200d \ufeffالمغربي\u061c \u00adالرسمي",
     ],
 )
 def test_acceptance_t7_idempotence(text: str) -> None:
@@ -62,6 +65,35 @@ def test_acceptance_t7_idempotence(text: str) -> None:
     first_pass = normalize_ar(text)
     second_pass = normalize_ar(first_pass)
     assert second_pass == first_pass
+
+
+# --- Rule 2: Invisible format characters (Unicode category Cf) --------------------------------
+
+
+def test_invisible_format_characters_removal() -> None:
+    """Verifies that all invisible format characters (Unicode category Cf) are removed."""
+    # RLM (U+200F), LRM (U+200E)
+    assert normalize_ar("المادة\u200f 12") == "الماده 12"
+    assert normalize_ar("المادة\u200e 12") == "الماده 12"
+    assert normalize_ar("المادة\u200f 12") == normalize_ar("المادة 12")
+
+    # ZWNJ (U+200C), ZWJ (U+200D)
+    assert normalize_ar("مقتض\u200cيات") == "مقتضيات"
+    assert normalize_ar("الـ\u200dقانون") == "القانون"
+
+    # BOM / Zero Width No-Break Space (U+FEFF)
+    assert normalize_ar("\ufeffالمملكة المغربية\ufeff") == "المملكه المغربيه"
+
+    # Arabic Letter Mark (ALM, U+061C)
+    assert normalize_ar("فصل\u061c 5") == "فصل 5"
+
+    # Soft Hyphen (SHY, U+00AD)
+    assert normalize_ar("مسؤولـ\u00adـية") == "مسؤوليه"
+
+    # Mixed invisible format characters inside a sentence
+    dirty = "\ufeffالمادة\u200f 12:\u200e تطبق\u061c مقتض\u200cيات\u200d هذا\u00ad القانون."
+    clean = "المادة 12: تطبق مقتضيات هذا القانون."
+    assert normalize_ar(dirty) == normalize_ar(clean)
 
 
 # --- Edge cases: Empty and whitespace -----------------------------------------------------------
@@ -73,7 +105,7 @@ def test_empty_and_whitespace_strings() -> None:
     assert normalize_ar("\n\t\r  \n  \t") == ""
 
 
-# --- Edge cases: Digits (Rule 7) ---------------------------------------------------------------
+# --- Edge cases: Digits (Rule 8) ---------------------------------------------------------------
 
 
 def test_arabic_indic_and_persian_digits() -> None:
@@ -85,7 +117,7 @@ def test_arabic_indic_and_persian_digits() -> None:
     assert normalize_ar("القانون رقم ٧٠.۰۳") == "القانون رقم 70 03"
 
 
-# --- Edge cases: Punctuation and symbols (Rule 9) -----------------------------------------------
+# --- Edge cases: Punctuation and symbols (Rule 10) ----------------------------------------------
 
 
 def test_arabic_punctuation_and_symbols() -> None:
@@ -106,14 +138,10 @@ def test_arabic_presentation_forms() -> None:
     # U+FE8E (Alef final), U+FE87 (Alef with hamza below isolated), U+FE93 (Teh marbuta isolated)
     # U+FC32 (Ligature feh with yeh isolated)
     pres_forms = "\ufe8e \ufe87 \ufe93 \ufc32"
-    # U+FE8E -> Alef (ا)
-    # U+FE87 -> Alef with hamza below (إ) -> rule 4 converts to Alef (ا)
-    # U+FE93 -> Teh marbuta (ة) -> rule 6 converts to Heh (ه)
-    # U+FC32 -> Feh + Yeh (في)
     assert normalize_ar(pres_forms) == "ا ا ه في"
 
 
-# --- Edge cases: Alef variants and Alef Wasla (Rule 4) -----------------------------------------
+# --- Edge cases: Alef variants and Alef Wasla (Rule 5) -----------------------------------------
 
 
 def test_alef_variants_normalization() -> None:
@@ -122,7 +150,7 @@ def test_alef_variants_normalization() -> None:
     assert normalize_ar(variants) == "احمد ابراهيم امنه امراه"
 
 
-# --- Edge cases: Alif Maqsura and Teh Marbuta (Rules 5 and 6) ----------------------------------
+# --- Edge cases: Alif Maqsura and Teh Marbuta (Rules 6 and 7) ----------------------------------
 
 
 def test_alif_maqsura_and_teh_marbuta() -> None:
@@ -132,7 +160,7 @@ def test_alif_maqsura_and_teh_marbuta() -> None:
     assert normalize_ar("محكمة الأسرة بالرباط") == "محكمه الاسره بالرباط"
 
 
-# --- Edge cases: Tatweel removal (Rule 3) ------------------------------------------------------
+# --- Edge cases: Tatweel removal (Rule 4) ------------------------------------------------------
 
 
 def test_tatweel_removal() -> None:
@@ -149,7 +177,7 @@ def test_mixed_arabic_and_french() -> None:
     assert normalize_ar(mixed) == expected
 
 
-# --- Edge cases: Whitespace collapse (Rule 10) -------------------------------------------------
+# --- Edge cases: Whitespace collapse (Rule 11) -------------------------------------------------
 
 
 def test_whitespace_collapsing() -> None:
@@ -163,7 +191,6 @@ def test_whitespace_collapsing() -> None:
 def test_no_stemming_performed() -> None:
     """Verifies that words retain their inflections/plurals and are not stemmed."""
     words = "قوانين محاكم يكتبون التزامات مساهمين"
-    # Normalization should not strip plurals or prefixes like 'ين' or 'ات'
     assert normalize_ar(words) == "قوانين محاكم يكتبون التزامات مساهمين"
 
 
