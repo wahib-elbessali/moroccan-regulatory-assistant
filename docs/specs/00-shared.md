@@ -43,45 +43,39 @@
 # src/core/contracts/enums.py
 from enum import StrEnum
 
-
-class RoleName(StrEnum):  # rows of the `roles` table
-    ADMIN = "admin"  # accounts, roles, audit; sees no corpus content
-    EDITEUR = "editeur"  # the jurist: manages the corpus, sees public + internal
-    LECTEUR = "lecteur"  # the citizen: sees public + own uploads
-
+class RoleName(StrEnum):          # rows of the `roles` table
+    ADMIN = "admin"               # accounts, roles, audit; sees no corpus content
+    EDITEUR = "editeur"           # the jurist: manages the corpus, sees public + internal
+    LECTEUR = "lecteur"           # the citizen: sees public + own uploads
 
 class DocStatus(StrEnum):
-    RECEIVED = "received"  # row created, file stored
-    EXTRACTING = "extracting"  # P1 extracting / OCR
-    CHUNKED = "chunked"  # P1 produced chunks
-    INDEXED = "indexed"  # P2 indexed (hidden) + P6 registered
-    READY = "ready"  # rights set, searchable
-    FAILED = "failed"  # any step failed; document stays hidden
+    RECEIVED = "received"         # row created, file stored
+    EXTRACTING = "extracting"     # P1 extracting / OCR
+    CHUNKED = "chunked"           # P1 produced chunks
+    INDEXED = "indexed"           # P2 indexed (hidden) + P6 registered
+    READY = "ready"               # rights set, searchable
+    FAILED = "failed"             # any step failed; document stays hidden
 
-
-class AuditAction(StrEnum):  # values of audit_log.action
-    LOGIN = "login"  # P5, success or not
-    QUERY_ASK = "query_ask"  # P5 (log_query), end of every /ask
-    ADMIN_UPDATE = "admin_update"  # P5: users, roles, document rights, account requests, web switch
+class AuditAction(StrEnum):       # values of audit_log.action
+    LOGIN = "login"                   # P5, success or not
+    QUERY_ASK = "query_ask"           # P5 (log_query), end of every /ask
+    ADMIN_UPDATE = "admin_update"     # P5: users, roles, document rights, account requests, web switch
     DOCUMENT_UPLOAD = "document_upload"  # P5, upload accepted
     DOCUMENT_DELETE = "document_delete"  # P5, document deleted
-    INGEST_FAILED = "ingest_failed"  # P1, user_id None
-    WEB_BLOCKED = "web_blocked"  # P6, query refused by the leak filter (never the query text)
+    INGEST_FAILED = "ingest_failed"   # P1, user_id None
+    WEB_BLOCKED = "web_blocked"       # P6, query refused by the leak filter (never the query text)
 
-
-class AccountRequestStatus(StrEnum):  # values of account_requests.status
+class AccountRequestStatus(StrEnum):   # values of account_requests.status
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
 
-
 class AnswerStatus(StrEnum):
-    ANSWERED = "answered"  # answer with verified citations
-    UNKNOWN = "unknown"  # nothing found in the documents this user may see
-    # (whether the corpus lacks it or it is restricted: never told apart)
+    ANSWERED = "answered"         # answer with verified citations
+    UNKNOWN = "unknown"           # nothing found in the documents this user may see
+                                  # (whether the corpus lacks it or it is restricted: never told apart)
 
-
-class StepType(StrEnum):  # process events, P3 → P4 narrator
+class StepType(StrEnum):          # process events, P3 → P4 narrator
     PLAN = "plan"
     SEARCH = "search"
     GRADE = "grade"
@@ -110,23 +104,19 @@ import hashlib, uuid
 
 CHUNK_NAMESPACE = uuid.UUID("6f1c2b0e-8a4d-4c1e-9b3a-2d5e7f9a1c30")  # never change
 
-
 def make_doc_id(file_bytes: bytes, owner_id: uuid.UUID | None) -> str:
     """documents.id. owner_id is set for private uploads, None for corpus documents."""
     scope = str(owner_id) if owner_id else "corpus"
     return hashlib.sha256(scope.encode() + b"\x00" + file_bytes).hexdigest()
 
-
 def make_file_hash(file_bytes: bytes) -> str:
     """documents.file_hash (kept for reference; the extraction cache is keyed by doc_id)."""
     return hashlib.sha256(file_bytes).hexdigest()
-
 
 def make_content_hash(normalized_text: str) -> str:
     """Duplicate warning: documents.content_hash. Two files with the same text (e.g. a digital
     PDF and a scan of it) get the same content hash but different doc_ids."""
     return hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
-
 
 def make_chunk_id(doc_id: str, chunk_index: int) -> str:
     """Qdrant point ID and BM25 key."""
@@ -142,7 +132,7 @@ def make_chunk_id(doc_id: str, chunk_index: int) -> str:
 ```python
 # src/core/contracts/lang.py — written by P3
 def detect_language(text: str) -> str:
-    """ "fr" if more than half of the letters are Latin, else "ar".
+    """"fr" if more than half of the letters are Latin, else "ar".
     Arabic and Darija written in Arabic script give "ar"."""
 ```
 
@@ -159,13 +149,12 @@ English, written in Latin letters, gives `"fr"`: an English question is answered
 from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 
-
 class UserContext(BaseModel):
     model_config = ConfigDict(frozen=True)
     user_id: UUID
     username: str
-    role: str  # a RoleName value
-    web_enabled: bool  # roles.web_enabled of the user's role, read by P5 on every request
+    role: str                    # a RoleName value
+    web_enabled: bool            # roles.web_enabled of the user's role, read by P5 on every request
     request_id: UUID
 
     def has_role(self, required_role: str) -> bool:
@@ -190,24 +179,24 @@ Roles must fit the document: a private upload (`owner_id` set) only ever has `[]
 
 ```python
 class Chunk(BaseModel):
-    chunk_id: str  # make_chunk_id(doc_id, chunk_index)
+    chunk_id: str                # make_chunk_id(doc_id, chunk_index)
     doc_id: str
-    chunk_index: int  # 0-based position in the document
-    total_chunks: int  # number of chunks of this document; same value on all of them
-    text: str  # as extracted, cleaned; shown and cited
-    text_normalized: str  # P1 normalization; used by BM25
-    title: str  # document title (DocumentMeta.title)
-    article: str | None  # e.g. "المادة 12"; None if the text has no articles
-    hierarchy: list[str]  # headings above the chunk, outermost first,
-    # e.g. ["الكتاب الأول", "الباب الثاني", "الفصل الثالث"]; [] if none
-    page_start: int  # 1-based
+    chunk_index: int             # 0-based position in the document
+    total_chunks: int            # number of chunks of this document; same value on all of them
+    text: str                    # as extracted, cleaned; shown and cited
+    text_normalized: str         # P1 normalization; used by BM25
+    title: str                   # document title (DocumentMeta.title)
+    article: str | None          # e.g. "المادة 12"; None if the text has no articles
+    hierarchy: list[str]         # headings above the chunk, outermost first,
+                                 # e.g. ["الكتاب الأول", "الباب الثاني", "الفصل الثالث"]; [] if none
+    page_start: int              # 1-based
     page_end: int
-    language: str  # "ar" | "fr"
-    source_file: str  # original file name (DocumentMeta.source_file)
-    source: str | None  # where the document comes from (DocumentMeta.source)
-    date: str | None  # the document's date as written by the uploader (DocumentMeta.date)
-    allowed_roles: list[str]  # the document's roles (document_roles); empty until published
-    owner_id: UUID | None  # set for private uploads
+    language: str                # "ar" | "fr"
+    source_file: str             # original file name (DocumentMeta.source_file)
+    source: str | None           # where the document comes from (DocumentMeta.source)
+    date: str | None             # the document's date as written by the uploader (DocumentMeta.date)
+    allowed_roles: list[str]     # the document's roles (document_roles); empty until published
+    owner_id: UUID | None        # set for private uploads
 ```
 
 - `0 <= chunk_index < total_chunks` and `page_start <= page_end` for every chunk.
@@ -219,14 +208,10 @@ What the uploader typed, passed to `ingest` and copied into every chunk of the d
 
 ```python
 class DocumentMeta(BaseModel):
-    title: str  # typed by the uploader
-    source_file: (
-        str  # original file name as uploaded (the stored file is renamed to <doc_id>.<ext>)
-    )
-    source: str | None = None  # free text: a URL, "الجريدة الرسمية عدد 7250", …; None if not given
-    date: str | None = (
-        None  # free text, e.g. "2025-03-12" or the Bulletin Officiel date; None if not given
-    )
+    title: str                   # typed by the uploader
+    source_file: str             # original file name as uploaded (the stored file is renamed to <doc_id>.<ext>)
+    source: str | None = None    # free text: a URL, "الجريدة الرسمية عدد 7250", …; None if not given
+    date: str | None = None      # free text, e.g. "2025-03-12" or the Bulletin Officiel date; None if not given
 ```
 
 ### 5.3 `Passage` (P2 → P3, P4)
@@ -234,8 +219,8 @@ class DocumentMeta(BaseModel):
 ```python
 class Passage(BaseModel):
     chunk: Chunk
-    score: float  # final score after re-ranking, higher is better
-    rank: int  # 1-based, after re-ranking
+    score: float                 # final score after re-ranking, higher is better
+    rank: int                    # 1-based, after re-ranking
 ```
 
 ### 5.4 `WebResult` (P6 → P3, P4)
@@ -246,9 +231,8 @@ class WebResult(BaseModel):
     title: str
     snippet: str
 
-
 class WebLookup(BaseModel):
-    status: str  # "done" | "skipped" (skipped for ANY reason: disabled, blocked, offline, error)
+    status: str                  # "done" | "skipped" (skipped for ANY reason: disabled, blocked, offline, error)
     results: list[WebResult]
 ```
 
@@ -256,31 +240,30 @@ class WebLookup(BaseModel):
 
 ```python
 class Citation(BaseModel):
-    doc_id: str | None  # None for a web source
-    url: str | None  # set for a web source
+    doc_id: str | None           # None for a web source
+    url: str | None              # set for a web source
     title: str
     article: str | None
     page: int | None
-    source: str | None  # chunk.source for a corpus document, None for a web source
-    date: str | None  # chunk.date for a corpus document, None for a web source
-    excerpt: str  # exact text from the passage that backs the claim
-
+    source: str | None           # chunk.source for a corpus document, None for a web source
+    date: str | None             # chunk.date for a corpus document, None for a web source
+    excerpt: str                 # exact text from the passage that backs the claim
 
 class Answer(BaseModel):
-    status: str  # an AnswerStatus value
-    text: str  # in `language`; citation markers [1], [2]…
-    citations: list[Citation]  # index i+1 matches marker [i+1]
-    confidence: float  # 0.0–1.0
-    language: str  # "ar" | "fr": "fr" for a French question, "ar" (standard Arabic)
-    # for an Arabic or Darija question. Never Darija.
+    status: str                  # an AnswerStatus value
+    text: str                    # in `language`; citation markers [1], [2]…
+    citations: list[Citation]    # index i+1 matches marker [i+1]
+    confidence: float            # 0.0–1.0
+    language: str                # "ar" | "fr": "fr" for a French question, "ar" (standard Arabic)
+                                 # for an Arabic or Darija question. Never Darija.
 ```
 
 ### 5.6 `ProcessEvent` (P3 → P4 narrator)
 
 ```python
 class ProcessEvent(BaseModel):
-    step: str  # a StepType value
-    data: dict  # see the table below; process data only, never passage text
+    step: str                    # a StepType value
+    data: dict                   # see the table below; process data only, never passage text
 ```
 
 | `step` | `data` keys |
@@ -331,25 +314,17 @@ class DocumentRights(Protocol):
         """Stores make_content_hash(normalize_ar(full text)), computed by P1 after extraction.
         Errors: NotFound."""
 
-    def create_document(
-        self,
-        file_bytes: bytes,
-        file_name: str,
-        meta: DocumentMeta,
-        owner_id: UUID | None,
-        uploaded_by: UUID | None,
-    ) -> tuple[str, Path]:
+    def create_document(self, file_bytes: bytes, file_name: str, meta: DocumentMeta,
+                        owner_id: UUID | None, uploaded_by: UUID | None) -> tuple[str, Path]:
         """Computes doc_id, stores the file in storage/uploads/, inserts the documents row
         (status received), logs DOCUMENT_UPLOAD. Returns (doc_id, stored file path).
         Used by POST /documents and by P1's command line. owner_id must be an existing user.
         Errors: Conflict (same doc_id exists), InvalidInput (format, size)."""
 
-
 class Audit(Protocol):
     def log_query(self, request_id: UUID, user_id: UUID, query: str, latency_ms: int) -> None:
         """latency_ms: time from the start of the /ask request to the end of its stream,
         stored in audit_log.latency_ms."""
-
     def log_action(self, user_id: UUID | None, action_type: str, details: dict) -> None:
         """user_id is None when no user is behind the action: a background job (P1 ingestion,
         publication called from it) or a login with an unknown username.
@@ -361,9 +336,8 @@ FastAPI dependencies (`src/api/deps.py`): `get_current_user_context(token) -> Us
 Stream helper (`src/api/deps.py`, P5, day 2), used by P3's `/ask` route:
 
 ```python
-async def audited_stream(
-    ctx: UserContext, question: str, events: AsyncIterator[dict]
-) -> AsyncIterator[dict]:
+async def audited_stream(ctx: UserContext, question: str,
+                         events: AsyncIterator[dict]) -> AsyncIterator[dict]:
     """Yields every event of `events`, then {"event": "done", "data": {request_id, latency_ms}},
     and calls log_query(ctx.request_id, ctx.user_id, question, latency_ms) in a finally block."""
 ```
@@ -372,14 +346,8 @@ async def audited_stream(
 
 ```python
 class Ingestion(Protocol):
-    def ingest(
-        self,
-        doc_id: str,
-        file_path: Path,
-        meta: DocumentMeta,
-        roles: list[str],
-        owner_id: UUID | None,
-    ) -> None:
+    def ingest(self, doc_id: str, file_path: Path, meta: DocumentMeta,
+               roles: list[str], owner_id: UUID | None) -> None:
         """Runs in the background. Extract → normalize → chunk → P2 index → P6 register →
         set_status(indexed) → P5 set_document_roles(doc_id, roles).
         Calls set_status at each step; on failure set_status(failed, error) and stops."""
@@ -410,7 +378,6 @@ class Retrieval(Protocol):
 
     def update_roles(self, doc_id: str, roles: list[str]) -> None:
         """Sets allowed_roles on every chunk of the document. Does not change hidden."""
-
     def hide(self, doc_id: str) -> None: ...
     def show(self, doc_id: str) -> None: ...
     def delete(self, doc_id: str) -> None: ...
@@ -429,53 +396,36 @@ visible(chunk, ctx) =
 
 ```python
 class LLMClient(Protocol):
-    def chat(
-        self,
-        messages: list[dict],
-        *,
-        model: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float = 0.0,
-    ) -> str: ...
-    def stream(
-        self, messages: list[dict], *, model: str | None = None, max_tokens: int | None = None
-    ) -> AsyncIterator[str]: ...
+    def chat(self, messages: list[dict], *, model: str | None = None,
+             max_tokens: int | None = None, temperature: float = 0.0) -> str: ...
+    def stream(self, messages: list[dict], *, model: str | None = None,
+               max_tokens: int | None = None) -> AsyncIterator[str]: ...
     def count_tokens(self, text: str) -> int: ...
-
 
 class OCRClient(Protocol):
     def ocr_page(self, image: bytes, lang: str = "ar") -> tuple[str, float]:
         """image: an encoded PNG or JPEG file. Returns (text, confidence 0–1)."""
 
-
 class LeakIndex(Protocol):
     def register(self, doc_id: str, text: str) -> None:
         """Stores fingerprints; blocking=True until set_blocking says otherwise."""
-
     def set_blocking(self, doc_id: str, blocking: bool) -> None: ...
     def delete(self, doc_id: str) -> None: ...
-
 
 class ModelsClient(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]:
         """bge-m3 vectors (1024 floats each), same order as texts. Errors: ServiceError."""
-
     def rerank(self, query: str, texts: list[str]) -> list[float]:
         """Re-ranker scores, same order as texts, higher is better. Errors: ServiceError."""
 
-
-class WebSearch(Protocol):  # used only inside P6's web agent
-    def search(
-        self, query: str, max_results: int = 5, request_id: UUID | None = None
-    ) -> list[WebResult]:
+class WebSearch(Protocol):          # used only inside P6's web agent
+    def search(self, query: str, max_results: int = 5, request_id: UUID | None = None) -> list[WebResult]:
         """Errors: LeakBlocked (carries `hits`) if the query overlaps protected text; ServiceError
         for every other failure (web disabled, timeout, connection error, 5xx)."""
 
-
-class WebAgent(Protocol):  # the only web entry point for other parts (P3)
-    def lookup(
-        self, question: str, ctx: UserContext, language: str, use_web: bool = True
-    ) -> WebLookup:
+class WebAgent(Protocol):           # the only web entry point for other parts (P3)
+    def lookup(self, question: str, ctx: UserContext, language: str,
+               use_web: bool = True) -> WebLookup:
         """Checks the switches (config web.enabled, ctx.web_enabled, use_web), builds a generic
         query from the question only, calls WebSearch.
         Never raises for disabled/blocked/offline: returns status "skipped"."""
@@ -495,18 +445,12 @@ class Orchestrator(Protocol):
 
 ```python
 class Writer(Protocol):
-    def write(
-        self,
-        question: str,
-        passages: list[Passage],
-        web: list[WebResult],
-        ctx: UserContext,
-        emit: Callable[[ProcessEvent], None] | None = None,
-    ) -> Answer:
+    def write(self, question: str, passages: list[Passage], web: list[WebResult],
+              ctx: UserContext,
+              emit: Callable[[ProcessEvent], None] | None = None) -> Answer:
         """Writes, then verifies with the Juge. Returns status unknown if nothing is supported.
         After the Juge, calls emit(ProcessEvent(step="verify", ...)) if emit is given,
         so P3 can narrate it."""
-
 
 class Narrator(Protocol):
     def narrate(self, event: ProcessEvent, language: str) -> AsyncIterator[str]:
@@ -523,40 +467,14 @@ class AppError(Exception):
     code: str = "app_error"
     http_status: int = 500
 
-
-class InvalidInput(AppError):
-    code, http_status = "invalid_input", 422
-
-
-class Unauthenticated(AppError):
-    code, http_status = "unauthenticated", 401
-
-
-class Forbidden(AppError):
-    code, http_status = "forbidden", 403
-
-
-class NotFound(AppError):
-    code, http_status = "not_found", 404
-
-
-class Conflict(AppError):
-    code, http_status = "conflict", 409
-
-
-class LeakBlocked(AppError):
-    code, http_status = (
-        "leak_blocked",
-        200,
-    )  # internal to P6, never mapped to HTTP; carries `hits: int`
-
-
-class TooManyRequests(AppError):
-    code, http_status = "too_many_requests", 429
-
-
-class ServiceError(AppError):
-    code, http_status = "service_error", 503
+class InvalidInput(AppError):    code, http_status = "invalid_input", 422
+class Unauthenticated(AppError): code, http_status = "unauthenticated", 401
+class Forbidden(AppError):       code, http_status = "forbidden", 403
+class NotFound(AppError):        code, http_status = "not_found", 404
+class Conflict(AppError):        code, http_status = "conflict", 409
+class LeakBlocked(AppError):     code, http_status = "leak_blocked", 200   # internal to P6, never mapped to HTTP; carries `hits: int`
+class TooManyRequests(AppError): code, http_status = "too_many_requests", 429
+class ServiceError(AppError):    code, http_status = "service_error", 503
 ```
 
 - The API turns any `AppError` into `{"code": ..., "message": ...}` with its `http_status`, and any other exception into `500 {"code": "internal_error", "message": …}` with no details (P5-05).
@@ -601,28 +519,25 @@ Every request except `/auth/login`, `/auth/account-requests` and `/health` carri
 
 ```python
 class UserCreate(BaseModel):
-    username: str  # same rules as AccountRequestIn
+    username: str                # same rules as AccountRequestIn
     password: str
     full_name: str
     role_id: int
-
 
 class UserResponse(BaseModel):
     user_id: UUID
     username: str
     full_name: str
-    role: str  # a RoleName value
+    role: str                    # a RoleName value
     is_active: bool
     created_at: datetime
     # never the password or its hash
 
-
 class MeResponse(BaseModel):
     user_id: UUID
     username: str
-    role: str  # a RoleName value
-    web_available: bool  # config web.enabled AND roles.web_enabled of the user's role
-
+    role: str                    # a RoleName value
+    web_available: bool          # config web.enabled AND roles.web_enabled of the user's role
 
 class DocumentResponse(BaseModel):
     doc_id: str
@@ -630,12 +545,11 @@ class DocumentResponse(BaseModel):
     source_file: str
     source: str | None
     date: str | None
-    status: str  # a DocStatus value
+    status: str                  # a DocStatus value
     error: str | None
-    roles: list[str]  # [] for a private upload
-    is_mine: bool  # the user uploaded it as a private upload
+    roles: list[str]             # [] for a private upload
+    is_mine: bool                # the user uploaded it as a private upload
     created_at: datetime
-
 
 class RoleResponse(BaseModel):
     role_id: int
@@ -649,16 +563,15 @@ class RoleResponse(BaseModel):
 
 ```python
 class AccountRequestIn(BaseModel):
-    username: str  # 3–32 characters: letters, digits, "." "_" "-"
-    password: str  # at least auth.min_password_length characters
-    full_name: str  # 1–100 characters
-
+    username: str                # 3–32 characters: letters, digits, "." "_" "-"
+    password: str                # at least auth.min_password_length characters
+    full_name: str               # 1–100 characters
 
 class AccountRequestResponse(BaseModel):
     request_id: UUID
     username: str
     full_name: str
-    status: str  # an AccountRequestStatus value
+    status: str                  # an AccountRequestStatus value
     created_at: datetime
     decided_by: UUID | None
     decided_at: datetime | None
@@ -673,24 +586,21 @@ class AccountRequestResponse(BaseModel):
 ```python
 class ConversationResponse(BaseModel):
     conversation_id: UUID
-    title: str | None  # the first question, cut to 60 characters; None before it
+    title: str | None            # the first question, cut to 60 characters; None before it
     created_at: datetime
-    updated_at: datetime  # time of the last exchange
-
+    updated_at: datetime         # time of the last exchange
 
 class MessageIn(BaseModel):
-    question: str  # as sent to /ask
-    answer: Answer  # as received in the `answer` event (§5.7)
-
+    question: str                # as sent to /ask
+    answer: Answer               # as received in the `answer` event (§5.7)
 
 class MessageResponse(BaseModel):
-    position: int  # 1, 2, 3… within the conversation
+    position: int                # 1, 2, 3… within the conversation
     question: str
-    available: bool  # False: a cited document is no longer visible to the user
-    answer: Answer | None  # None when available is False
-    language: str  # answer.language, kept to show the notice below
+    available: bool              # False: a cited document is no longer visible to the user
+    answer: Answer | None        # None when available is False
+    language: str                # answer.language, kept to show the notice below
     created_at: datetime
-
 
 class ConversationDetail(ConversationResponse):
     messages: list[MessageResponse]  # by position

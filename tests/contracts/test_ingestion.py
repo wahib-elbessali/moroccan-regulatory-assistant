@@ -186,9 +186,9 @@ def test_t13_private_upload_owner_id_assigned(harness: IngestionHarness, tmp_pat
 
     assert len(harness.retrieval.indexed_chunks) > 0
     for chunk in harness.retrieval.indexed_chunks:
-        assert chunk.owner_id == user_u, (
-            f"Chunk {chunk.chunk_id} must have owner_id == {user_u}, got {chunk.owner_id}"
-        )
+        assert (
+            chunk.owner_id == user_u
+        ), f"Chunk {chunk.chunk_id} must have owner_id == {user_u}, got {chunk.owner_id}"
         assert chunk.allowed_roles == []
 
 

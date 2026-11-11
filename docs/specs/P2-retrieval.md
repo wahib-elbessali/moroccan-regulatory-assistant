@@ -134,20 +134,18 @@ The filter comes first: a chunk the user may not see never enters either list.
 
 ```python
 def index(chunks):
-    validate(chunks)  # P2-05, raises InvalidInput
+    validate(chunks)                                   # P2-05, raises InvalidInput
     doc_id, total = chunks[0].doc_id, chunks[0].total_chunks
-    texts = [embedding_text(c) for c in chunks]
+    texts   = [embedding_text(c) for c in chunks]
     vectors = []
     for batch in batches(texts, cfg.retrieval.embed_batch_size):
-        vectors += get_models().embed(batch)  # P6
-    points = [
-        Point(id=c.chunk_id, vector=v, payload={**c.model_dump(mode="json"), "hidden": True})
-        for c, v in zip(chunks, vectors)
-    ]
+        vectors += get_models().embed(batch)           # P6
+    points = [Point(id=c.chunk_id, vector=v,
+                    payload={**c.model_dump(mode="json"), "hidden": True})
+              for c, v in zip(chunks, vectors)]
     qdrant.upsert(COLLECTION, points)
     qdrant.delete(COLLECTION, filter=all_of(doc_id == doc_id, chunk_index >= total))
-    bump_version()  # §6.5
-
+    bump_version()                                     # §6.5
 
 def embedding_text(c) -> str:
     headings = " › ".join(c.hierarchy + ([c.article] if c.article else []))
@@ -164,29 +162,24 @@ def search(query, ctx, top_k=None) -> list[Passage]:
     top_k = top_k or cfg.retrieval.top_k_final
     if ctx is None:
         raise InvalidInput("user context required")
-    if not normalize_ar(query):  # P1
+    if not normalize_ar(query):                        # P1
         raise InvalidInput("empty query")
-    tokens = tokenize(normalize_ar(query))  # P1 (normalize_ar), §6.6
+    tokens = tokenize(normalize_ar(query))             # P1 (normalize_ar), §6.6
     if not 1 <= top_k <= cfg.retrieval.rerank_top_n:
         raise InvalidInput("top_k out of range")
-    flt = visibility_filter(ctx)  # §6.3
+    flt = visibility_filter(ctx)                       # §6.3
 
-    vec_hits = qdrant.search(
-        COLLECTION,
-        get_models().embed([query])[0],  # P6
-        filter=flt,
-        limit=cfg.retrieval.top_k_vector,
-    )
-    bm25_hits = bm25_search(tokens, ctx, cfg.retrieval.top_k_bm25)  # §6.4
-    bm25_hits = recheck_in_qdrant(bm25_hits, flt)  # P2-14: keeps only ids Qdrant returns with flt
+    vec_hits  = qdrant.search(COLLECTION, get_models().embed([query])[0],   # P6
+                              filter=flt, limit=cfg.retrieval.top_k_vector)
+    bm25_hits = bm25_search(tokens, ctx, cfg.retrieval.top_k_bm25)          # §6.4
+    bm25_hits = recheck_in_qdrant(bm25_hits, flt)      # P2-14: keeps only ids Qdrant returns with flt
 
     fused = rrf([ids(vec_hits), ids(bm25_hits)], k=cfg.retrieval.rrf_k)
-    candidates = fused[: cfg.retrieval.rerank_top_n]
-    chunks = load_chunks(candidates)  # payloads already fetched above
-    scores = get_models().rerank(query, [c.text for c in chunks])  # P6
+    candidates = fused[:cfg.retrieval.rerank_top_n]
+    chunks = load_chunks(candidates)                   # payloads already fetched above
+    scores = get_models().rerank(query, [c.text for c in chunks])           # P6
     ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)[:top_k]
     return [Passage(chunk=c, score=s, rank=i + 1) for i, (c, s) in enumerate(ranked)]
-
 
 def rrf(lists, k) -> list[str]:
     score = defaultdict(float)
@@ -206,8 +199,8 @@ The visibility rule of 00-shared §6.3, written as a Qdrant filter:
 def visibility_filter(ctx) -> Filter:
     return Filter(
         must=[FieldCondition(key="hidden", match=MatchValue(value=False))],
-        should=[  # at least one must match
-            FieldCondition(key="owner_id", match=MatchValue(value=str(ctx.user_id))),
+        should=[                                       # at least one must match
+            FieldCondition(key="owner_id",      match=MatchValue(value=str(ctx.user_id))),
             FieldCondition(key="allowed_roles", match=MatchValue(value=ctx.role)),
         ],
     )
@@ -219,15 +212,12 @@ def visibility_filter(ctx) -> Filter:
 
 ```python
 def bm25_search(tokens, ctx, limit) -> list[str]:
-    refresh_if_stale()  # §6.5
-    visible = [
-        i
-        for i, m in enumerate(store.meta)  # filter BEFORE scoring
-        if not m.hidden and (m.owner_id == str(ctx.user_id) or ctx.role in m.allowed_roles)
-    ]
+    refresh_if_stale()                                 # §6.5
+    visible = [i for i, m in enumerate(store.meta)     # filter BEFORE scoring
+               if not m.hidden and (m.owner_id == str(ctx.user_id) or ctx.role in m.allowed_roles)]
     if not visible or not tokens:
         return []
-    scores = store.bm25.get_batch_scores(tokens, visible)  # rank_bm25: scores only these
+    scores = store.bm25.get_batch_scores(tokens, visible)   # rank_bm25: scores only these
     best = sorted(zip(visible, scores), key=lambda x: x[1], reverse=True)
     return [store.meta[i].chunk_id for i, s in best[:limit] if s > 0]
 ```
@@ -239,12 +229,10 @@ BM25 word statistics (IDF) are computed over the whole index. Only visible chunk
 BM25 is in memory, inside the `api` process. Other processes also write to Qdrant (P1's command line), so P2 uses a version file:
 
 ```python
-VERSION_FILE = "data/indexes/retrieval.version"  # volume `indexes` of `api`
+VERSION_FILE = "data/indexes/retrieval.version"       # volume `indexes` of `api`
 
-
-def bump_version():  # after every write: index, delete,
-    write_atomically(VERSION_FILE, uuid4().hex)  # update_roles, hide, show
-
+def bump_version():                                    # after every write: index, delete,
+    write_atomically(VERSION_FILE, uuid4().hex)        # update_roles, hide, show
 
 def refresh_if_stale():
     v = read_or_none(VERSION_FILE)
@@ -254,9 +242,8 @@ def refresh_if_stale():
         store.bm25 = BM25Okapi([tokenize(bm25_text(p)) for p in payloads])
         store.version = v
 
-
 def bm25_text(p) -> str:
-    return " ".join([p.text_normalized, normalize_ar(p.title), normalize_ar(p.article or "")])  # P1
+    return " ".join([p.text_normalized, normalize_ar(p.title), normalize_ar(p.article or "")])   # P1
 ```
 
 Rebuilding ~5 000 chunks takes about a second, and happens only after a write. Searches read the version file each time; it is a few bytes.
@@ -269,7 +256,7 @@ def tokenize(normalized: str) -> list[str]:
     for t in normalized.split():
         if (len(t) < 2 and not t.isdigit()) or t in STOPWORDS:
             continue
-        out.append(light_stem(t))  # SHOULD (P2-22); identity in the minimum version
+        out.append(light_stem(t))                      # SHOULD (P2-22); identity in the minimum version
     return out
 ```
 
@@ -277,23 +264,16 @@ def tokenize(normalized: str) -> list[str]:
 
 ```python
 def update_roles(doc_id, roles):
-    qdrant.set_payload(COLLECTION, {"allowed_roles": roles}, filter=doc_id == doc_id)
-    bump_version()
-
+    qdrant.set_payload(COLLECTION, {"allowed_roles": roles}, filter=doc_id == doc_id); bump_version()
 
 def hide(doc_id):
-    qdrant.set_payload(COLLECTION, {"hidden": True}, filter=doc_id == doc_id)
-    bump_version()
-
+    qdrant.set_payload(COLLECTION, {"hidden": True},  filter=doc_id == doc_id); bump_version()
 
 def show(doc_id):
-    qdrant.set_payload(COLLECTION, {"hidden": False}, filter=doc_id == doc_id)
-    bump_version()
-
+    qdrant.set_payload(COLLECTION, {"hidden": False}, filter=doc_id == doc_id); bump_version()
 
 def delete(doc_id):
-    qdrant.delete(COLLECTION, filter=doc_id == doc_id)
-    bump_version()
+    qdrant.delete(COLLECTION, filter=doc_id == doc_id); bump_version()
 ```
 
 Each is a single Qdrant call over all points of the document (P2-27). With no points, Qdrant changes nothing and P2 logs a warning (P2-26).
