@@ -91,7 +91,7 @@ def test_stopword_file_has_one_word_per_line() -> None:
 
 def test_load_stopwords_ignores_blank_lines_and_bom(tmp_path) -> None:
     path = tmp_path / "stopwords.txt"
-    path.write_text("﻿في\n\nمن\n", encoding="utf-8")
+    path.write_text("\ufeff\u0641\u064a\n\n\u0645\u0646\n", encoding="utf-8")
     assert load_stopwords(path) == frozenset({"في", "من"})
 
 
