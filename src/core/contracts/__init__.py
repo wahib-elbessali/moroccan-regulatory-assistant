@@ -89,6 +89,8 @@ __all__ = [
     "DocumentMeta",
     "DocumentResponse",
     "DocumentRights",
+    "FakeAudit",
+    "FakeDocumentRights",
     "Forbidden",
     "Ingestion",
     "INTERNAL_ROLES",

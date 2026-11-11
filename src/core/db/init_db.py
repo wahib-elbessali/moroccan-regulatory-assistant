@@ -48,17 +48,18 @@ def init_db() -> None:
         if existing_admin is None:
             new_admin = User(
                 username=admin_username,
-                password_hash=hash_password(admin_password),
+                hashed_password=hash_password(admin_password),
                 role_id=admin_role_id,
             )
             session.add(new_admin)
 
+        # P5-12b : Transition vers 'failed' pour les statuts inachevés
         stmt_recover = (
             update(Document)
-            .where(Document.status.in_(["received", "processing", "indexing"]))
+            .where(Document.status.in_(["received", "extracting", "chunked"]))
             .values(
                 status="failed",
-                error_message="Interrupted by server restart.",
+                error="interrupted",
             )
         )
         session.execute(stmt_recover)
