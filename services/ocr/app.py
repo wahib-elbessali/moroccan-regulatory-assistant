@@ -1,4 +1,3 @@
-
 import io
 from typing import Annotated
 
@@ -30,16 +29,10 @@ async def extract_text(
         output_type=pytesseract.Output.DICT,
     )
 
-    confidences = [
-        float(conf)
-        for conf in data["conf"]
-        if float(conf) != -1
-    ]
+    confidences = [float(conf) for conf in data["conf"] if float(conf) != -1]
 
     confidence = (
-       max(0.0, min(1.0, sum(confidences) / len(confidences) / 100))
-      if confidences
-      else 0.0
+        max(0.0, min(1.0, sum(confidences) / len(confidences) / 100)) if confidences else 0.0
     )
 
     return {
