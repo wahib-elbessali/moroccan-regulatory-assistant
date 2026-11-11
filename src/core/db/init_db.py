@@ -1,91 +1,70 @@
-import logging
-from uuid import uuid4
+"""Database initialization routines and interrupted job recovery (P5-12, P5-12b)."""
 
-from src.core.db.session import engine, SessionLocal, Base
-from src.core.db.models import Role, User, Document
-from src.core.contracts.enums import RoleName, DocStatus
-from src.core.security import get_password_hash
-from src.core.config import cfg
+import os
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import select, update
+
+from src.core.contracts.enums import RoleName
+from src.core.db.models import Document, Role, User
+from src.core.db.session import SessionLocal
+from src.core.security import hash_password
 
 
-def init_database() -> None:
-    """Crée les tables et initialise les données système indispensables."""
-    logger.info("Création des tables PostgreSQL...")
-    Base.metadata.create_all(bind=engine)
+def run_migrations() -> None:
+    """Apply Alembic migrations to head."""
+    root_dir = Path(__file__).resolve().parents[3]
+    alembic_ini_path = root_dir / "alembic.ini"
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option(
+        "script_location", str(root_dir / "src" / "core" / "db" / "migrations")
+    )
+    command.upgrade(alembic_cfg, "head")
 
-    db = SessionLocal()
-    try:
-        existing_roles = {r.name: r for r in db.query(Role).all()}
-        role_definitions = [
-            (
-                RoleName.ADMIN.value,
-                "Administrateur système (gestion des comptes, rôles, audit)",
-                True,
-            ),
-            (
-                RoleName.EDITEUR.value,
-                "Juriste (gestion du corpus, accès aux textes internes et publics)",
-                True,
-            ),
-            (
-                RoleName.LECTEUR.value,
-                "Citoyen / Lecteur (accès aux documents publics et uploads privés)",
-                True,
-            ),
-        ]
 
-        for name, desc, web_active in role_definitions:
-            if name not in existing_roles:
-                new_role = Role(name=name, description=desc, web_enabled=web_active)
-                db.add(new_role)
-                logger.info("Rôle créé : %s", name)
-        db.commit()
+def init_db() -> None:
+    """Initialize database, create initial admin, and recover interrupted documents."""
+    run_migrations()
 
-        admin_role = db.query(Role).filter_by(name=RoleName.ADMIN.value).first()
-        admin_user = db.query(User).filter_by(role_id=admin_role.id).first()
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_password:
+        raise RuntimeError("ADMIN_PASSWORD environment variable must be set.")
 
-        if not admin_user:
-            admin_username = cfg.admin.username or "admin"
-            admin_password = cfg.admin.password or "AdminPassword123!"
-            root_admin = User(
-                id=uuid4(),
+    with SessionLocal() as session:
+        stmt_role = select(Role).where(Role.name == RoleName.ADMIN.value)
+        admin_role = session.scalars(stmt_role).first()
+
+        assert admin_role is not None, (
+            "Role 'admin' not found in database. Ensure migrations ran successfully."
+        )
+
+        admin_role_id = admin_role.id
+
+        stmt_user = select(User).where(User.username == admin_username)
+        existing_admin = session.scalars(stmt_user).first()
+        if existing_admin is None:
+            new_admin = User(
                 username=admin_username,
-                hashed_password=get_password_hash(admin_password),
-                full_name="System Administrator",
-                is_active=True,
-                role_id=admin_role.id,
+                password_hash=hash_password(admin_password),
+                role_id=admin_role_id,
             )
-            db.add(root_admin)
-            db.commit()
-            logger.info("Administrateur racine initialisé avec succès : %s", admin_username)
+            session.add(new_admin)
 
-        interrupted_count = (
-            db.query(Document)
-            .filter(
-                Document.status.in_(
-                    [DocStatus.RECEIVED.value, DocStatus.EXTRACTING.value, DocStatus.CHUNKED.value]
-                )
-            )
-            .update(
-                {Document.status: DocStatus.FAILED.value, Document.error: "interrupted"},
-                synchronize_session=False,
+        stmt_recover = (
+            update(Document)
+            .where(Document.status.in_(["received", "processing", "indexing"]))
+            .values(
+                status="failed",
+                error_message="Interrupted by server restart.",
             )
         )
-        if interrupted_count > 0:
-            db.commit()
-            logger.warning(
-                "%d document(s) interrompu(s) réinitialisé(s) à l'état 'failed'.", interrupted_count
-            )
+        session.execute(stmt_recover)
 
-    except Exception as exc:
-        db.rollback()
-        logger.error("Erreur critique lors de l'initialisation de la base : %s", exc)
-        raise
-    finally:
-        db.close()
+        session.commit()
 
 
 if __name__ == "__main__":
-    init_database()
+    init_db()
