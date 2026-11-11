@@ -5,9 +5,12 @@ from src.core.contracts.fakes.llm import (
     FakeModelsClient,
     FakeOCRClient,
 )
+from src.core.contracts.fakes.web import FakeWebAgent, FakeWebSearch
 
 __all__ = [
     "FakeLLMClient",
     "FakeModelsClient",
     "FakeOCRClient",
+    "FakeWebAgent",
+    "FakeWebSearch",
 ]
