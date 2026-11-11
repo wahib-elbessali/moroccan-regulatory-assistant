@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/ask", tags=["ask (P3)"])
-
+router = APIRouter()
 
 @router.post("")
+@router.post("/")
 def ask_question():
-    return {"answer": "fake answer"}
+    return {"answer": "regulatory response"}

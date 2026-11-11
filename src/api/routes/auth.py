@@ -1,18 +1,15 @@
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-
+router = APIRouter()
 
 @router.post("/login")
 def login():
-    return {"message": "fake login endpoint"}
-
+    return {"message": "login endpoint"}
 
 @router.get("/me")
 def get_me():
-    return {"message": "fake me endpoint"}
+    return {"message": "user data"}
 
-
-@router.post("/logout")
-def logout():
-    return {"message": "fake logout endpoint"}
+@router.post("/account-requests")
+def create_account_request():
+    return {"status": "pending"}
