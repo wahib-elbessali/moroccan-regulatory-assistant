@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install lightweight web server / API dependencies for the OCR wrapper
-RUN pip install --no-cache-dir fastapi uvicorn pytesseract pillow
+RUN pip install --no-cache-dir fastapi uvicorn pytesseract pillow python-multipart
 
 # Copy the lightweight server code
 COPY app.py /app/app.py
