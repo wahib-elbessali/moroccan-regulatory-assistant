@@ -82,3 +82,8 @@ branch = true
 
 [tool.coverage.report]
 skip_empty = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.4",
+]
