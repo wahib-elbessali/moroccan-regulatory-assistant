@@ -1,7 +1,6 @@
-from src.core.contracts.fakes.audit import FakeAudit
-from src.core.contracts.fakes.document_rights import FakeDocumentRights
+"""Contract fake implementations for testing."""
 
-__all__ = [
-    "FakeDocumentRights",
-    "FakeAudit",
-]
+from src.core.contracts.fakes.audit import FakeAudit
+from src.core.contracts.fakes.rights import FakeDocumentRights
+
+__all__ = ["FakeAudit", "FakeDocumentRights"]
