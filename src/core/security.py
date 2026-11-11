@@ -3,7 +3,7 @@
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
 from argon2 import PasswordHasher
@@ -92,12 +92,14 @@ def get_current_usercontext(
         role = RoleName(str(role_str)).value
     except (ValueError, KeyError) as err:
         raise Forbidden("Invalid credentials or payload.") from err
-
+    req_id_raw = payload.get("request_id")
+    request_id = UUID(str(req_id_raw)) if req_id_raw else uuid4()
     return UserContext(
         user_id=user_uuid,
         username=str(username),
         role=role,
         web_enabled=bool(payload.get("web_enabled", True)),
+        request_id=request_id,
     )
 
 
