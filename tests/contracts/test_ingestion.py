@@ -19,6 +19,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from src.core.contracts import (  # noqa: E402
+    Chunk,
     DocStatus,
     DocumentMeta,
     Ingestion,
@@ -271,3 +272,14 @@ def test_t15_index_failure_marks_document_failed(tmp_path: Path):
 
     # set_document_roles must not have been called
     assert len(rights.roles_set) == 0
+
+
+# --- Visibility of root conftest fixture across test packages (00-shared §9) ------------------
+
+
+def test_sample_chunks_fixture_visible_at_contracts_level(sample_chunks: list[Chunk]):
+    """Verifies that the sample_chunks fixture in tests/conftest.py is visible to all parts."""
+    assert isinstance(sample_chunks, list)
+    assert len(sample_chunks) >= 20
+    for chunk in sample_chunks:
+        assert isinstance(chunk, Chunk)
