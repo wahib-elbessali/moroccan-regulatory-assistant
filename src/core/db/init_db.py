@@ -37,9 +37,9 @@ def init_db() -> None:
         stmt_role = select(Role).where(Role.name == RoleName.ADMIN.value)
         admin_role = session.scalars(stmt_role).first()
 
-        assert admin_role is not None, (
-            "Role 'admin' not found in database. Ensure migrations ran successfully."
-        )
+        assert (
+            admin_role is not None
+        ), "Role 'admin' not found in database. Ensure migrations ran successfully."
 
         admin_role_id = admin_role.id
 

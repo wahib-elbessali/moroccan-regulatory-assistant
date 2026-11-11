@@ -3,7 +3,8 @@ src/core/contracts/fakes/document_rights.py
 In-memory fake implementation of DocumentRightsProtocol (P5 contract).
 Used for isolated cross-part tests (P1, P3, P6).
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -43,7 +44,7 @@ class FakeDocumentRights:
             "status": "received",
             "roles": [],
             "content_hash": None,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
         self.history.append({"action": "create", "doc_id": doc_id})
         return doc_id, path

@@ -172,24 +172,33 @@ async def request_id_middleware(request, call_next):
 ### 6.2 `get_current_user_context`
 
 ```python
-def get_current_user_context(token: str = Depends(oauth2_scheme), db = Depends(get_db)) -> UserContext:
+def get_current_user_context(
+    token: str = Depends(oauth2_scheme), db=Depends(get_db)
+) -> UserContext:
     try:
-        payload = decode_access_token(token)               # checks signature and exp
+        payload = decode_access_token(token)  # checks signature and exp
         user_id = UUID(payload["sub"])
-    except (JWTError, KeyError, ValueError):               # bad signature, expired, no/garbled "sub"
+    except (JWTError, KeyError, ValueError):  # bad signature, expired, no/garbled "sub"
         raise Unauthenticated("invalid token")
-    user = db.get(User, user_id)                           # re-read on every request
+    user = db.get(User, user_id)  # re-read on every request
     if user is None or not user.is_active:
         raise Unauthenticated("invalid token")
     role = user.role.name
-    return UserContext(user_id=user.id, username=user.username, role=role,
-                       web_enabled=user.role.web_enabled, request_id=request_id_var.get())
+    return UserContext(
+        user_id=user.id,
+        username=user.username,
+        role=role,
+        web_enabled=user.role.web_enabled,
+        request_id=request_id_var.get(),
+    )
+
 
 def require_roles(allowed: list[str]):
     def dep(ctx: UserContext = Depends(get_current_user_context)) -> UserContext:
         if ctx.role not in allowed:
             raise Forbidden("forbidden")
         return ctx
+
     return dep
 ```
 
@@ -197,9 +206,9 @@ def require_roles(allowed: list[str]):
 
 ```python
 @router.post("/auth/login")
-def login(body: LoginIn, db = Depends(get_db)):
+def login(body: LoginIn, db=Depends(get_db)):
     user = db.query(User).filter_by(username=body.username).one_or_none()
-    hashed = user.hashed_password if user else DUMMY_HASH          # same Argon2 cost either way
+    hashed = user.hashed_password if user else DUMMY_HASH  # same Argon2 cost either way
     password_ok = verify_password(body.password, hashed)
     ok = user is not None and user.is_active and password_ok
     get_audit().log_action(user.id if user else None, LOGIN, {"success": ok})
@@ -212,35 +221,56 @@ def login(body: LoginIn, db = Depends(get_db)):
 
 ```python
 @router.post("/documents", status_code=202)
-def upload(file: UploadFile, title: str = Form(...), source: str | None = Form(None),
-           date: str | None = Form(None),
-           roles: list[str] = Form([]),                                   # repeated fields
-           ctx: UserContext = Depends(get_current_user_context),
-           bg: BackgroundTasks = ..., db = Depends(get_db)):
+def upload(
+    file: UploadFile,
+    title: str = Form(...),
+    source: str | None = Form(None),
+    date: str | None = Form(None),
+    roles: list[str] = Form([]),  # repeated fields
+    ctx: UserContext = Depends(get_current_user_context),
+    bg: BackgroundTasks = ...,
+    db=Depends(get_db),
+):
     is_editor = ctx.role == "editeur"
     owner_id = None if is_editor else ctx.user_id
     roles = validate_roles(roles, private=not is_editor) if is_editor else []
     if is_editor and not roles:
         raise InvalidInput("a corpus document needs at least one role")
-    meta = DocumentMeta(title=title, source_file=file.filename,                  # shared
-                        source=clean(source), date=clean(date))                  # trimmed, ≤ 500 chars
-    doc_id, path = create_document(file.file.read(), file.filename, meta,
-                                   owner_id, uploaded_by=ctx.user_id)
-    bg.add_task(get_ingestion().ingest, doc_id, path, meta, roles, owner_id)     # P1
+    meta = DocumentMeta(
+        title=title,
+        source_file=file.filename,  # shared
+        source=clean(source),
+        date=clean(date),
+    )  # trimmed, ≤ 500 chars
+    doc_id, path = create_document(
+        file.file.read(), file.filename, meta, owner_id, uploaded_by=ctx.user_id
+    )
+    bg.add_task(get_ingestion().ingest, doc_id, path, meta, roles, owner_id)  # P1
     return {"doc_id": doc_id, "status": "received"}
 
+
 def create_document(data, file_name, meta, owner_id, uploaded_by) -> tuple[str, Path]:
-    if suffix(file_name).lower() not in ALLOWED_SUFFIXES:          # same list as P1-06
+    if suffix(file_name).lower() not in ALLOWED_SUFFIXES:  # same list as P1-06
         raise InvalidInput("unsupported format")
     if len(data) > cfg.uploads.max_bytes:
         raise InvalidInput("file too large")
-    doc_id = make_doc_id(data, owner_id)                           # shared
+    doc_id = make_doc_id(data, owner_id)  # shared
     if db.get(Document, doc_id):
         raise Conflict("already uploaded")
     path = save_file(f"storage/uploads/{doc_id}{suffix(file_name).lower()}", data)
-    db.add(Document(id=doc_id, title=meta.title, source_file=file_name, source=meta.source,
-                    date=meta.date, owner_id=owner_id, status=RECEIVED,
-                    file_hash=make_file_hash(data), created_at=now()))          # shared
+    db.add(
+        Document(
+            id=doc_id,
+            title=meta.title,
+            source_file=file_name,
+            source=meta.source,
+            date=meta.date,
+            owner_id=owner_id,
+            status=RECEIVED,
+            file_hash=make_file_hash(data),
+            created_at=now(),
+        )
+    )  # shared
     db.commit()
     get_audit().log_action(uploaded_by, DOCUMENT_UPLOAD, {"doc_id": doc_id})
     return doc_id, path
@@ -277,28 +307,34 @@ The document is hidden from before the first change until after the last one, so
 ```python
 def set_document_roles(doc_id: str, roles: list[str]) -> dict:
     doc = get_document_or_404(doc_id)
-    roles = validate_roles(roles, private=doc.owner_id is not None)   # InvalidInput if roles don't fit (P5-26b)
+    roles = validate_roles(
+        roles, private=doc.owner_id is not None
+    )  # InvalidInput if roles don't fit (P5-26b)
     if get_status(doc_id) not in (INDEXED, READY):
-        raise InvalidInput("document is not indexed")              # a failed document is deleted and re-uploaded
-    retrieval, leak = get_retrieval(), get_leak_index()            # P2, P6
+        raise InvalidInput(
+            "document is not indexed"
+        )  # a failed document is deleted and re-uploaded
+    retrieval, leak = get_retrieval(), get_leak_index()  # P2, P6
     if get_status(doc_id) == READY:
-        set_status(doc_id, INDEXED)                                # first, so a failure below can go to FAILED
+        set_status(doc_id, INDEXED)  # first, so a failure below can go to FAILED
     try:
-        retrieval.hide(doc_id)                                     # P2
-        replace_document_roles(doc_id, roles)                      # DB, one transaction
-        retrieval.update_roles(doc_id, roles)                      # P2
-        leak.set_blocking(doc_id, blocking=not is_public(roles))   # P6
-        retrieval.show(doc_id)                                     # P2
+        retrieval.hide(doc_id)  # P2
+        replace_document_roles(doc_id, roles)  # DB, one transaction
+        retrieval.update_roles(doc_id, roles)  # P2
+        leak.set_blocking(doc_id, blocking=not is_public(roles))  # P6
+        retrieval.show(doc_id)  # P2
         set_status(doc_id, READY)
-        get_audit().log_action(current_user_id_or_none(), ADMIN_UPDATE,
-                               {"doc_id": doc_id, "roles": roles})
+        get_audit().log_action(
+            current_user_id_or_none(), ADMIN_UPDATE, {"doc_id": doc_id, "roles": roles}
+        )
         return {"doc_id": doc_id, "status": READY}
     except Exception as e:
-        safe(retrieval.hide, doc_id)                               # make sure it stays hidden
+        safe(retrieval.hide, doc_id)  # make sure it stays hidden
         if get_status(doc_id) != FAILED:
             set_status(doc_id, FAILED, error=short_reason(e))
-        get_audit().log_action(current_user_id_or_none(), ADMIN_UPDATE,
-                               {"doc_id": doc_id, "failed": short_reason(e)})
+        get_audit().log_action(
+            current_user_id_or_none(), ADMIN_UPDATE, {"doc_id": doc_id, "failed": short_reason(e)}
+        )
         raise
 ```
 
@@ -310,17 +346,17 @@ For a private document (`roles = []`), `show` makes it visible only to its owner
 
 ```python
 @router.delete("/documents/{doc_id}", status_code=204)
-def delete(doc_id: str, ctx = Depends(get_current_user_context)):
+def delete(doc_id: str, ctx=Depends(get_current_user_context)):
     doc = get_document_or_404(doc_id)
     corpus_manager = ctx.role in ("editeur", "admin") and doc.owner is None
     if not corpus_manager and doc.owner != ctx.user_id:
-        raise NotFound("not found")                                # never reveal existence
+        raise NotFound("not found")  # never reveal existence
     if get_status(doc_id) in (RECEIVED, EXTRACTING, CHUNKED):
-        raise Conflict("document is being processed")              # P5-30b
-    get_retrieval().hide(doc_id)                                   # P2
-    get_ingestion().delete(doc_id)                                 # P1 (reads the documents row)
+        raise Conflict("document is being processed")  # P5-30b
+    get_retrieval().hide(doc_id)  # P2
+    get_ingestion().delete(doc_id)  # P1 (reads the documents row)
     remove_file(doc)
-    delete_rows(doc_id)                                            # document_roles, then documents
+    delete_rows(doc_id)  # document_roles, then documents
     get_audit().log_action(ctx.user_id, DOCUMENT_DELETE, {"doc_id": doc_id})
 ```
 
@@ -341,47 +377,68 @@ stateDiagram-v2
 
 ```python
 @router.post("/auth/account-requests", status_code=202)
-def request_account(body: AccountRequestIn, db = Depends(get_db)):     # no token
-    validate_account_request(body)              # username pattern, password length, full_name length
+def request_account(body: AccountRequestIn, db=Depends(get_db)):  # no token
+    validate_account_request(body)  # username pattern, password length, full_name length
     if count_pending_requests(db) >= cfg.auth.max_pending_requests:
         raise TooManyRequests("too many pending requests, try later")
-    if username_taken(db, body.username):       # in users, or in a pending request
+    if username_taken(db, body.username):  # in users, or in a pending request
         raise Conflict("username not available")
-    req = AccountRequest(id=uuid4(), username=body.username,
-                         hashed_password=get_password_hash(body.password),   # hashed before storing
-                         full_name=body.full_name, status=PENDING, created_at=now())
-    db.add(req); db.commit()
+    req = AccountRequest(
+        id=uuid4(),
+        username=body.username,
+        hashed_password=get_password_hash(body.password),  # hashed before storing
+        full_name=body.full_name,
+        status=PENDING,
+        created_at=now(),
+    )
+    db.add(req)
+    db.commit()
     return {"request_id": req.id, "status": PENDING}
 
+
 @router.post("/admin/account-requests/{request_id}/approve")
-def approve_account_request(request_id: UUID, body: ApproveIn,
-                            ctx = Depends(require_roles(["admin"])), db = Depends(get_db)):
-    with db.begin():                                            # one transaction
+def approve_account_request(
+    request_id: UUID, body: ApproveIn, ctx=Depends(require_roles(["admin"])), db=Depends(get_db)
+):
+    with db.begin():  # one transaction
         req = get_request_or_404(db, request_id, for_update=True)
         if req.status != PENDING:
             raise InvalidInput("request already decided")
         role = get_role_or_422(db, body.role_id)
         if db.query(User).filter_by(username=req.username).first():
-            raise Conflict("username not available")            # request stays pending
-        user = User(id=uuid4(), username=req.username, hashed_password=req.hashed_password,
-                    full_name=req.full_name, role_id=role.id, is_active=True, created_at=now())
+            raise Conflict("username not available")  # request stays pending
+        user = User(
+            id=uuid4(),
+            username=req.username,
+            hashed_password=req.hashed_password,
+            full_name=req.full_name,
+            role_id=role.id,
+            is_active=True,
+            created_at=now(),
+        )
         db.add(user)
         req.status, req.decided_by, req.decided_at = APPROVED, ctx.user_id, now()
-    get_audit().log_action(ctx.user_id, ADMIN_UPDATE,
-        {"account_request": str(request_id), "decision": "approved", "role_id": role.id})
+    get_audit().log_action(
+        ctx.user_id,
+        ADMIN_UPDATE,
+        {"account_request": str(request_id), "decision": "approved", "role_id": role.id},
+    )
     return UserResponse.from_orm(user)
 
+
 @router.post("/admin/account-requests/{request_id}/reject", status_code=204)
-def reject_account_request(request_id: UUID,
-                           ctx = Depends(require_roles(["admin"])), db = Depends(get_db)):
+def reject_account_request(
+    request_id: UUID, ctx=Depends(require_roles(["admin"])), db=Depends(get_db)
+):
     with db.begin():
         req = get_request_or_404(db, request_id, for_update=True)
         if req.status != PENDING:
             raise InvalidInput("request already decided")
         req.status, req.decided_by, req.decided_at = REJECTED, ctx.user_id, now()
-        req.hashed_password = None                              # no longer needed
-    get_audit().log_action(ctx.user_id, ADMIN_UPDATE,
-        {"account_request": str(request_id), "decision": "rejected"})
+        req.hashed_password = None  # no longer needed
+    get_audit().log_action(
+        ctx.user_id, ADMIN_UPDATE, {"account_request": str(request_id), "decision": "rejected"}
+    )
 ```
 
 `/auth/login` (§6.3) reads only `users`, so a pending or rejected requester is treated as an unknown username with no extra code.
@@ -390,23 +447,34 @@ def reject_account_request(request_id: UUID,
 
 ```python
 @router.get("/conversations/{conversation_id}")
-def open_conversation(conversation_id: UUID, ctx = Depends(get_current_user_context)):
+def open_conversation(conversation_id: UUID, ctx=Depends(get_current_user_context)):
     conv = db.get(Conversation, conversation_id)
     if conv is None or conv.user_id != ctx.user_id:
-        raise NotFound("not found")                                # same for missing and not yours
-    visible = visible_doc_ids(ctx, all_cited_ids(conv))            # one query on documents + document_roles
+        raise NotFound("not found")  # same for missing and not yours
+    visible = visible_doc_ids(ctx, all_cited_ids(conv))  # one query on documents + document_roles
     out = []
-    for m in conv.messages:                                        # by position
+    for m in conv.messages:  # by position
         ok = all(d in visible for d in m.cited_doc_ids)
-        out.append(MessageResponse(position=m.position, question=m.question, available=ok,
-                                   answer=m.answer if ok else None,
-                                   language=m.answer["language"], created_at=m.created_at))
+        out.append(
+            MessageResponse(
+                position=m.position,
+                question=m.question,
+                available=ok,
+                answer=m.answer if ok else None,
+                language=m.answer["language"],
+                created_at=m.created_at,
+            )
+        )
     return ConversationDetail(..., messages=out)
+
 
 def visible_doc_ids(ctx, doc_ids) -> set[str]:
     # documents that exist, are ready, and that this user may see
-    return {d.id for d in documents_with_ids(doc_ids) if d.status == "ready"
-            and (d.owner_id == ctx.user_id or ctx.role in roles_of(d))}
+    return {
+        d.id
+        for d in documents_with_ids(doc_ids)
+        if d.status == "ready" and (d.owner_id == ctx.user_id or ctx.role in roles_of(d))
+    }
 ```
 
 A deleted document is simply absent from `visible`, so its answers become unavailable exactly like a restricted one.

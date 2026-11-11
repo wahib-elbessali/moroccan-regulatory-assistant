@@ -154,28 +154,42 @@ Every path that does not reach "Answered" gives the same unknown answer.
 
 ```python
 def write(question, passages, web, ctx, emit=None) -> Answer:
-    lang = detect_language(question)                               # P3 (shared §4b)
+    lang = detect_language(question)  # P3 (shared §4b)
     if not passages and not web:
         return unknown(lang)
 
-    sources = [corpus_source(i + 1, p) for i, p in enumerate(passages)] + \
-              [web_source(len(passages) + i + 1, w) for i, w in enumerate(web)]
-    draft = get_llm().chat(writer_messages(question, sources, lang),             # P6
-                           max_tokens=cfg.answer.max_answer_tokens).strip()
+    sources = [corpus_source(i + 1, p) for i, p in enumerate(passages)] + [
+        web_source(len(passages) + i + 1, w) for i, w in enumerate(web)
+    ]
+    draft = (
+        get_llm()
+        .chat(
+            writer_messages(question, sources, lang),  # P6
+            max_tokens=cfg.answer.max_answer_tokens,
+        )
+        .strip()
+    )
     if draft == "NO_ANSWER" or not draft:
         return unknown(lang)
 
-    claims  = split_claims(draft, valid=range(1, len(sources) + 1))   # each: text, cited [n...]
-    checked = judge(claims, sources)                                  # §6.2
-    kept    = [c for c in checked if c.supported]
+    claims = split_claims(draft, valid=range(1, len(sources) + 1))  # each: text, cited [n...]
+    checked = judge(claims, sources)  # §6.2
+    kept = [c for c in checked if c.supported]
     if emit:
-        emit(ProcessEvent(step="verify", data={
-            "supported": len(kept), "total": len(claims),
-            "reasons": [c.reason for c in checked if not c.supported]}))
+        emit(
+            ProcessEvent(
+                step="verify",
+                data={
+                    "supported": len(kept),
+                    "total": len(claims),
+                    "reasons": [c.reason for c in checked if not c.supported],
+                },
+            )
+        )
     if not kept:
         return unknown(lang)
 
-    text, citations = renumber(kept, sources)                         # §6.5
+    text, citations = renumber(kept, sources)  # §6.5
     all_web = all(c.url for c in citations)
     confidence = round(len(kept) / len(claims), 2)
     if all_web:
@@ -184,12 +198,15 @@ def write(question, passages, web, ctx, emit=None) -> Answer:
         return unknown(lang)
     if any(c.url for c in citations):
         text = TEXTS["WEB_ONLY" if all_web else "WEB_PART"][lang] + "\n" + text
-    return Answer(status="answered", text=text, citations=citations,
-                  confidence=confidence, language=lang)
+    return Answer(
+        status="answered", text=text, citations=citations, confidence=confidence, language=lang
+    )
+
 
 def unknown(lang) -> Answer:
-    return Answer(status="unknown", text=TEXTS["UNKNOWN"][lang], citations=[],
-                  confidence=0.0, language=lang)
+    return Answer(
+        status="unknown", text=TEXTS["UNKNOWN"][lang], citations=[], confidence=0.0, language=lang
+    )
 ```
 
 ### 6.2 `judge`
@@ -203,8 +220,12 @@ def judge(claims, sources):
     if not to_check:
         return claims
     try:
-        out = parse_json(get_llm().chat(judge_messages(to_check, sources),          # P6
-                                        max_tokens=cfg.answer.max_judge_tokens))
+        out = parse_json(
+            get_llm().chat(
+                judge_messages(to_check, sources),  # P6
+                max_tokens=cfg.answer.max_judge_tokens,
+            )
+        )
         verdicts = {v["claim"]: v for v in out["verdicts"]}
     except Exception:
         log.warning("judge fallback")
@@ -212,12 +233,13 @@ def judge(claims, sources):
 
     for k, c in enumerate(to_check, start=1):
         if verdicts is None:
-            c.supported, c.excerpt, c.source_n = word_check(c, sources)   # P4-14
+            c.supported, c.excerpt, c.source_n = word_check(c, sources)  # P4-14
             c.reason = None if c.supported else "not_supported"
             continue
         v = verdicts.get(k, {})
         if not v.get("supported"):
-            c.supported, c.reason = False, "not_supported"; continue
+            c.supported, c.reason = False, "not_supported"
+            continue
         n = v.get("source")
         if n in c.cited and excerpt_in_source(v.get("excerpt", ""), sources[n - 1].text):
             c.supported, c.excerpt, c.source_n, c.reason = True, v["excerpt"], n, None
@@ -225,9 +247,10 @@ def judge(claims, sources):
             c.supported, c.reason = False, "excerpt_not_found"
     return claims
 
+
 def excerpt_in_source(excerpt, source_text) -> bool:
-    e = normalize_ar(excerpt)                                          # P1
-    return len(e) >= cfg.answer.min_excerpt_chars and e in normalize_ar(source_text)   # P1
+    e = normalize_ar(excerpt)  # P1
+    return len(e) >= cfg.answer.min_excerpt_chars and e in normalize_ar(source_text)  # P1
 ```
 
 Each kept claim backs onto **one** source (the one whose excerpt was checked). A claim citing `[1][3]` keeps the marker of the source the Juge's excerpt came from.
@@ -269,18 +292,22 @@ User: <claim n="1" cites="2,3">{claim text}</claim> …
 ```python
 class LLMNarrator:
     async def narrate(self, event, language):
-        if event.step in ("web", "verify"):                         # P4-22: exact wording
-            yield template(event, language); return
+        if event.step in ("web", "verify"):  # P4-22: exact wording
+            yield template(event, language)
+            return
         try:
-            async for piece in get_llm().stream(narration_messages(event, language),   # P6
-                                                model=cfg.llm.narration_model,
-                                                max_tokens=cfg.answer.narration_max_tokens):
+            async for piece in get_llm().stream(
+                narration_messages(event, language),  # P6
+                model=cfg.llm.narration_model,
+                max_tokens=cfg.answer.narration_max_tokens,
+            ):
                 yield piece
         except Exception:
             try:
-                yield template(event, language)                      # P4-23
+                yield template(event, language)  # P4-23
             except Exception:
                 return
+
 
 class TemplateNarrator:
     async def narrate(self, event, language):
@@ -305,7 +332,7 @@ Templates (`fr`; the `ar` set says the same in Modern Standard Arabic):
 
 ```python
 def renumber(kept, sources):
-    order, excerpts = [], defaultdict(list)          # source number → its excerpts
+    order, excerpts = [], defaultdict(list)  # source number → its excerpts
     for c in kept:
         if c.source_n not in order:
             order.append(c.source_n)

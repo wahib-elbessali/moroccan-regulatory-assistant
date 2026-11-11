@@ -1,11 +1,12 @@
 from logging.config import fileConfig
-import os
-from sqlalchemy import engine_from_config, pool
+
 from alembic import context
+from sqlalchemy import engine_from_config, pool
+
+import src.core.db.models  # noqa: F401
 
 # Import des modèles pour que target_metadata détecte les 8 tables
 from src.core.db.session import Base, get_database_url
-import src.core.db.models  # noqa: F401
 
 config = context.config
 
@@ -34,7 +35,7 @@ def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
     # Injection dynamique de l'URL conforme à P5-09b / P5-10b
     configuration["sqlalchemy.url"] = get_database_url()
-    
+
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",

@@ -3,7 +3,8 @@ src/core/contracts/fakes/audit.py
 In-memory fake implementation of AuditProtocol (P5 contract).
 Used for logging verification in cross-part tests without database writes.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -26,7 +27,7 @@ class FakeAudit:
                 "user_id": user_id,
                 "action_type": action_type,
                 "details": details or {},
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }
         )
 
@@ -43,6 +44,6 @@ class FakeAudit:
                 "user_id": user_id,
                 "query": query,
                 "latency_ms": latency_ms,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }
         )

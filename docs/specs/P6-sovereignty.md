@@ -151,7 +151,7 @@ Every call to a function owned by **another part** is marked with its owner in a
 class GatewayClient(LLMClient):
     def __init__(self):
         if cfg.mode != "cloud" or os.environ.get("ALLOW_CLOUD_LLM") != "true":
-            raise ServiceError("cloud mode not allowed")          # shared error
+            raise ServiceError("cloud mode not allowed")  # shared error
         self.url = "http://cloud-gateway:8000"
 ```
 
@@ -160,7 +160,7 @@ class GatewayClient(LLMClient):
 ```python
 def real_llm() -> LLMClient:
     if cfg.mode == "cloud":
-        return GatewayClient()                    # raises if not allowed
+        return GatewayClient()  # raises if not allowed
     model = cfg.llm.model_light if cfg.mode == "light" else cfg.llm.model
     return OllamaClient(cfg.llm.base_url, model)
 ```
@@ -169,24 +169,29 @@ def real_llm() -> LLMClient:
 
 ```python
 def fingerprints(text: str) -> tuple[list[str], list[str]]:
-    norm   = normalize_ar(text)                                            # P1
+    norm = normalize_ar(text)  # P1
     tokens = norm.split()
-    grams  = [" ".join(tokens[i:i + N]) for i in range(len(tokens) - N + 1)]
-    refs   = ["ref:" + m.group(0) for m in re.finditer(r"(رقم|عدد)((?: \d+)+)", norm)]
+    grams = [" ".join(tokens[i : i + N]) for i in range(len(tokens) - N + 1)]
+    refs = ["ref:" + m.group(0) for m in re.finditer(r"(رقم|عدد)((?: \d+)+)", norm)]
     return sorted({hmac16(g) for g in grams}), sorted({hmac16(r) for r in refs})
+
 
 def hmac16(s: str) -> str:
     return hmac.new(LEAK_HMAC_KEY, s.encode(), "sha256").hexdigest()[:16]
 
-AUTH = {"Authorization": f"Bearer {LEAK_API_TOKEN}"}          # P6-28
+
+AUTH = {"Authorization": f"Bearer {LEAK_API_TOKEN}"}  # P6-28
+
 
 class HttpLeakIndex(LeakIndex):
     def register(self, doc_id, text):
         grams, refs = fingerprints(text)
         post(WEB_SEARCH + "/index", {"doc_id": doc_id, "grams": grams, "refs": refs}, headers=AUTH)
         # web-search stores them with blocking = True
+
     def set_blocking(self, doc_id, blocking):
         post(WEB_SEARCH + "/blocking", {"doc_id": doc_id, "blocking": blocking}, headers=AUTH)
+
     def delete(self, doc_id):
         http_delete(WEB_SEARCH + f"/index/{doc_id}", headers=AUTH)
 ```
@@ -217,29 +222,39 @@ Rules: at most {max_words} words; keep only the general legal topic;
 remove names of people, organisations, places, document numbers, dates and figures;
 answer with the query only."""
 
+
 def lookup(question: str, ctx: UserContext, language: str, use_web: bool = True) -> WebLookup:
     if not (cfg.web.enabled and ctx.web_enabled and use_web):
         return WebLookup(status="skipped", results=[])
 
     try:
-        query = get_llm().chat([
-            {"role": "system", "content": REFORMULATE_PROMPT.format(
-                language=LANGUAGE_NAMES[language],          # "Modern Standard Arabic" | "French"
-                max_words=cfg.web.max_query_words)},
-            {"role": "user", "content": question},
-        ], max_tokens=40)
-        query = " ".join(query.split()[:cfg.web.max_query_words])   # enforce the limit
+        query = get_llm().chat(
+            [
+                {
+                    "role": "system",
+                    "content": REFORMULATE_PROMPT.format(
+                        language=LANGUAGE_NAMES[language],  # "Modern Standard Arabic" | "French"
+                        max_words=cfg.web.max_query_words,
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            max_tokens=40,
+        )
+        query = " ".join(query.split()[: cfg.web.max_query_words])  # enforce the limit
         if not query:
             return WebLookup(status="skipped", results=[])
-        results = get_web_search().search(query, cfg.web.max_results,
-                                          request_id=ctx.request_id)
+        results = get_web_search().search(query, cfg.web.max_results, request_id=ctx.request_id)
     except LeakBlocked as e:
-        get_audit().log_action(ctx.user_id, WEB_BLOCKED,                   # P5
-                               {"request_id": str(ctx.request_id), "hits": e.hits})
+        get_audit().log_action(
+            ctx.user_id,
+            WEB_BLOCKED,  # P5
+            {"request_id": str(ctx.request_id), "hits": e.hits},
+        )
         return WebLookup(status="skipped", results=[])
-    except (ServiceError, TimeoutError):                                   # LLM, web-search or SearxNG down
+    except (ServiceError, TimeoutError):  # LLM, web-search or SearxNG down
         return WebLookup(status="skipped", results=[])
-    except Exception as e:                                                 # never raise (P6-20)
+    except Exception as e:  # never raise (P6-20)
         log.warning("web lookup failed", reason=type(e).__name__)
         return WebLookup(status="skipped", results=[])
 
@@ -250,15 +265,15 @@ def lookup(question: str, ctx: UserContext, language: str, use_web: bool = True)
 
 ```python
 @app.post("/search")
-def search(body: SearchIn, token = Depends(require_leak_token)):   # P6-28: 401 without the token
+def search(body: SearchIn, token=Depends(require_leak_token)):  # P6-28: 401 without the token
     if not cfg.web.enabled:
         return error(403, "web_disabled")
     hits = leak_hits(body.query)
     if is_blocked(hits, body.query):
-        log(status="blocked", hits=len(hits))           # never the query text
+        log(status="blocked", hits=len(hits))  # never the query text
         return error(403, "leak_blocked", hits=len(hits))
     raw = searxng.search(body.query, limit=body.max_results)
-    log(status="ok", hits=len(hits), query=body.query) # allowed: already sent out, kept for review
+    log(status="ok", hits=len(hits), query=body.query)  # allowed: already sent out, kept for review
     return {"results": [{"url": r.url, "title": r.title, "snippet": r.content} for r in raw]}
 ```
 
@@ -266,23 +281,24 @@ def search(body: SearchIn, token = Depends(require_leak_token)):   # P6-28: 401 
 
 ```python
 def leak_hits(query: str) -> list[str]:
-    grams, refs = fingerprints(query)                   # same function as 6.3
+    grams, refs = fingerprints(query)  # same function as 6.3
     hits = []
     for fp in grams + refs:
-        entry = store.get(fp)                           # {doc_id: blocking}
+        entry = store.get(fp)  # {doc_id: blocking}
         if not entry:
             continue
-        if any(not b for b in entry.values()):          # also in a public document
+        if any(not b for b in entry.values()):  # also in a public document
             continue
-        if len(entry) >= cfg.leak.max_df:               # too common
+        if len(entry) >= cfg.leak.max_df:  # too common
             continue
         if any(entry.values()):
             hits.append(fp)
     return hits
 
+
 def is_blocked(hits, query) -> bool:
     n_grams = max(1, len(normalize_ar(query).split()) - cfg.leak.ngram + 1)
-    if any(is_ref(h) for h in hits):                    # a reference of a protected document
+    if any(is_ref(h) for h in hits):  # a reference of a protected document
         return True
     return len(hits) >= cfg.leak.min_hits or len(hits) / n_grams >= cfg.leak.overlap_threshold
 ```
