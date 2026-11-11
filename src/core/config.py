@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 from typing import Any
+
 import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -79,7 +79,7 @@ def load_config() -> AppConfig:
 
     config_yaml_path = Path("config.yaml")
     if config_yaml_path.exists():
-        with open(config_yaml_path, "r", encoding="utf-8") as f:
+        with open(config_yaml_path, encoding="utf-8") as f:
             yaml_data: dict[str, Any] = yaml.safe_load(f) or {}
 
         if "retrieval" in yaml_data:
