@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from src.core.contracts.fakes.llm import (
     FakeLLMClient,
@@ -8,9 +8,7 @@ from src.core.contracts.fakes.llm import (
 
 
 def test_fake_llm_returns_configured_replies():
-    client = FakeLLMClient(
-        replies=["First response", "Second response"]
-    )
+    client = FakeLLMClient(replies=["First response", "Second response"])
 
     assert client.chat([]) == "First response"
     assert client.chat([]) == "Second response"
@@ -27,10 +25,7 @@ def test_fake_llm_uses_default_reply_when_queue_is_empty():
 async def test_fake_llm_stream_reconstructs_response():
     client = FakeLLMClient(replies=["Hello Moroccan AI"])
 
-    chunks = [
-        chunk
-        async for chunk in client.stream([])
-    ]
+    chunks = [chunk async for chunk in client.stream([])]
 
     assert "".join(chunks) == "Hello Moroccan AI"
 

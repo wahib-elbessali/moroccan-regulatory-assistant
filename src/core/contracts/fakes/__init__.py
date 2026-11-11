@@ -1,4 +1,3 @@
-
 """Fake implementations of shared contracts."""
 
 from src.core.contracts.fakes.llm import (

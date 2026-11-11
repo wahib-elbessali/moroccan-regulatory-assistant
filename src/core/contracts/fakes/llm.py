@@ -1,4 +1,4 @@
-﻿"""Fake implementations for LLM, OCR and embedding/reranking contracts."""
+"""Fake implementations for LLM, OCR and embedding/reranking contracts."""
 
 from __future__ import annotations
 
@@ -88,9 +88,7 @@ class FakeModelsClient(ModelsClient):
     @classmethod
     def _embedding(cls, text: str) -> list[float]:
         """Generate a stable, normalized vector from the input text."""
-        raw = hashlib.shake_256(text.encode("utf-8")).digest(
-            cls.EMBEDDING_DIMENSION * 4
-        )
+        raw = hashlib.shake_256(text.encode("utf-8")).digest(cls.EMBEDDING_DIMENSION * 4)
 
         vector: list[float] = []
 
