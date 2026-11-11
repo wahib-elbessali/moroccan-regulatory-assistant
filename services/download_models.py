@@ -26,7 +26,9 @@ def run(cmd: list[str]) -> None:
 def main() -> None:
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     ollama_models = list(
-        dict.fromkeys([cfg["llm"]["model"], cfg["llm"]["model_light"], cfg["llm"]["narration_model"]])
+        dict.fromkeys(
+            [cfg["llm"]["model"], cfg["llm"]["model_light"], cfg["llm"]["narration_model"]]
+        )
     )
 
     # 1. Images: build local ones, pull the others.
