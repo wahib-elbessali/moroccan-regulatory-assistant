@@ -1,30 +1,29 @@
+import time
 from collections.abc import AsyncIterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from src.core.contracts.enums import AuditAction
-from src.core.contracts.models import UserContext
 from src.core.contracts.protocols import Audit
+from src.core.security import UserContext
 
 
 async def audited_stream(
-    stream: AsyncIterator[str],
-    audit_service: Audit,
+    generator: AsyncIterator[str],
+    audit: Audit,
     ctx: UserContext,
-    doc_id: str | None = None,
-    action: AuditAction = AuditAction.READ,
+    query: str,
 ) -> AsyncIterator[str]:
-    """Wraps an LLM token stream, collects the full text, and logs an audit record upon completion."""
-    collected_tokens: list[str] = []
+    """Wraps an LLM token stream to measure latency and audit upon completion."""
+    start_time = time.perf_counter()
+    request_id: UUID = ctx.request_id or uuid4()
+
     try:
-        async for chunk in stream:
-            collected_tokens.append(chunk)
+        async for chunk in generator:
             yield chunk
     finally:
-        full_text = "".join(collected_tokens)
-        audit_service.log(
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        audit.log_query(
+            request_id=request_id,
             user_id=ctx.user_id,
-            action=action,
-            doc_id=doc_id,
-            details={"length": len(full_text), "status": "completed"},
-            request_id=ctx.request_id or uuid4(),
+            query=query,
+            latency_ms=latency_ms,
         )
