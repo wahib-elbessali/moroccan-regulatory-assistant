@@ -178,27 +178,31 @@ Written in Python-like pseudocode; P7 writes it in its chosen stack.
 ```python
 async def ask(question, use_web):
     if not question.strip() or len(question) > MAX_QUESTION_CHARS:
-        show_input_error(); return
+        show_input_error()
+        return
     disable_send()
     thinking = open_thinking_block()
     try:
-        async for event, data in sse_post(f"{API}/ask", {"question": question, "use_web": use_web},
-                                          headers=auth()):
+        async for event, data in sse_post(
+            f"{API}/ask", {"question": question, "use_web": use_web}, headers=auth()
+        ):
             if event == "thinking":
-                thinking.append_text(data["text"])                 # plain text, dir="auto"
+                thinking.append_text(data["text"])  # plain text, dir="auto"
             elif event == "answer":
                 thinking.collapse()
-                show_answer(data)                                  # §6.2
+                show_answer(data)  # §6.2
             elif event == "error":
                 thinking.collapse()
                 show_error(data["message"])
             elif event == "done":
                 break
     except HttpError as e:
-        if e.status == 401: return to_sign_in("session expired")
-        show_error(message_for(e))                                 # 422 → "question too long or empty"
+        if e.status == 401:
+            return to_sign_in("session expired")
+        show_error(message_for(e))  # 422 → "question too long or empty"
     finally:
         enable_send()
+
 
 async def sse_post(url, body, headers):
     """POST with a streaming response; yields (event, data) for each SSE message."""
@@ -206,9 +210,11 @@ async def sse_post(url, body, headers):
         r.raise_for_status()
         event, data = None, []
         async for line in r.lines():
-            if line.startswith("event:"):  event = line[6:].strip()
-            elif line.startswith("data:"): data.append(line[5:].strip())
-            elif line == "" and event:                             # blank line ends a message
+            if line.startswith("event:"):
+                event = line[6:].strip()
+            elif line.startswith("data:"):
+                data.append(line[5:].strip())
+            elif line == "" and event:  # blank line ends a message
                 yield event, json.loads("\n".join(data))
                 event, data = None, []
 ```
@@ -220,24 +226,30 @@ def show_answer(a):
     box = answer_box(dir="auto")
     lines = a["text"].split("\n")
     if a["status"] == "answered" and a["citations"] and is_web_notice(lines[0], a):
-        box.add_notice(lines[0]); lines = lines[1:]               # the web notice, set apart
-    for part in split_on_markers("\n".join(lines)):               # "text [1] text [2]" → pieces
+        box.add_notice(lines[0])
+        lines = lines[1:]  # the web notice, set apart
+    for part in split_on_markers("\n".join(lines)):  # "text [1] text [2]" → pieces
         if part.is_marker:
             box.add_marker(part.n, on_click=lambda n=part.n: show_citation(a["citations"][n - 1]))
         else:
-            box.add_text(part.text)                                # plain text, never HTML
+            box.add_text(part.text)  # plain text, never HTML
     if a["status"] == "answered":
         box.add_confidence(a["confidence"])
+
 
 def show_citation(c):
     panel = citation_panel(dir="auto")
     panel.add_text(c["title"])
-    if c["article"]: panel.add_text(c["article"])
-    if c["page"]:    panel.add_text(f"p. {c['page']}")
-    if c["source"]:  panel.add_text(c["source"])                   # text, even if it looks like a URL
+    if c["article"]:
+        panel.add_text(c["article"])
+    if c["page"]:
+        panel.add_text(f"p. {c['page']}")
+    if c["source"]:
+        panel.add_text(c["source"])  # text, even if it looks like a URL
     panel.add_quote(c["excerpt"])
     if c["url"] and c["url"].startswith(("http://", "https://")):
         panel.add_link(c["url"], new_tab=True, rel="noopener noreferrer", label="web")
+
 
 def is_web_notice(first_line, a) -> bool:
     return any(c["url"] for c in a["citations"]) and not MARKER.search(first_line)
@@ -246,11 +258,15 @@ def is_web_notice(first_line, a) -> bool:
 ### 6.3 Following an upload
 
 ```python
-async def upload(file, title, source, visibility):                 # visibility: None for non-editors
+async def upload(file, title, source, visibility):  # visibility: None for non-editors
     form = {"file": file, "title": title}
-    if source:     form["source"] = source
-    if visibility: form["roles"] = {"public": ["lecteur", "editeur"], "internal": ["editeur"]}[visibility]   # one field per role
-    r = await http.post(f"{API}/documents", files=form, headers=auth())   # 202 {doc_id, status}
+    if source:
+        form["source"] = source
+    if visibility:
+        form["roles"] = {"public": ["lecteur", "editeur"], "internal": ["editeur"]}[
+            visibility
+        ]  # one field per role
+    r = await http.post(f"{API}/documents", files=form, headers=auth())  # 202 {doc_id, status}
     doc_id = r.json()["doc_id"]
     while True:
         s = (await http.get(f"{API}/documents/{doc_id}/status", headers=auth())).json()

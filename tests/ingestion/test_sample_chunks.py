@@ -30,12 +30,12 @@ def test_sample_chunks_all_valid_chunks(sample_chunks: list[Chunk]):
         assert chunk.page_start <= chunk.page_end
         assert chunk.page_start >= 1
         assert chunk.text.strip(), "chunk text must not be empty"
-        assert chunk.text_normalized == normalize_ar(
-            chunk.text
-        ), f"text_normalized must match normalize_ar(text) for chunk {chunk.chunk_id}"
-        assert chunk.language == detect_language(
-            chunk.text
-        ), f"Chunk {chunk.chunk_id} language={chunk.language} differs from detect_language={detect_language(chunk.text)}"
+        assert chunk.text_normalized == normalize_ar(chunk.text), (
+            f"text_normalized must match normalize_ar(text) for chunk {chunk.chunk_id}"
+        )
+        assert chunk.language == detect_language(chunk.text), (
+            f"Chunk {chunk.chunk_id} language={chunk.language} differs from detect_language={detect_language(chunk.text)}"
+        )
 
 
 def test_sample_chunks_contiguous_indices(sample_chunks: list[Chunk]):
@@ -48,12 +48,12 @@ def test_sample_chunks_contiguous_indices(sample_chunks: list[Chunk]):
         doc_chunks.sort(key=lambda c: c.chunk_index)
         expected_total = len(doc_chunks)
         for expected_idx, c in enumerate(doc_chunks):
-            assert (
-                c.chunk_index == expected_idx
-            ), f"Document {doc_id} chunk has index {c.chunk_index}, expected {expected_idx}"
-            assert (
-                c.total_chunks == expected_total
-            ), f"Document {doc_id} total_chunks={c.total_chunks}, expected {expected_total}"
+            assert c.chunk_index == expected_idx, (
+                f"Document {doc_id} chunk has index {c.chunk_index}, expected {expected_idx}"
+            )
+            assert c.total_chunks == expected_total, (
+                f"Document {doc_id} total_chunks={c.total_chunks}, expected {expected_total}"
+            )
 
 
 def test_sample_chunks_document_diversity_and_roles(sample_chunks: list[Chunk]):
@@ -72,9 +72,9 @@ def test_sample_chunks_document_diversity_and_roles(sample_chunks: list[Chunk]):
         if "lecteur" in c.allowed_roles and "editeur" in c.allowed_roles and c.owner_id is None
     ]
     assert len(public_chunks) > 0, "Must include at least one public document"
-    assert any(
-        "adala" in c.source_file for c in public_chunks
-    ), "Public chunks must include an adala_* text"
+    assert any("adala" in c.source_file for c in public_chunks), (
+        "Public chunks must include an adala_* text"
+    )
 
     # Check for internal document
     internal_chunks = [
@@ -89,12 +89,12 @@ def test_sample_chunks_document_diversity_and_roles(sample_chunks: list[Chunk]):
     other_upload_chunks = [
         c for c in sample_chunks if c.allowed_roles == [] and c.owner_id == OTHER_LECTEUR_ID
     ]
-    assert (
-        len(lecteur_upload_chunks) > 0
-    ), f"Must include private upload chunks owned by LECTEUR_ID {LECTEUR_ID}"
-    assert (
-        len(other_upload_chunks) > 0
-    ), f"Must include private upload chunks owned by OTHER_LECTEUR_ID {OTHER_LECTEUR_ID}"
+    assert len(lecteur_upload_chunks) > 0, (
+        f"Must include private upload chunks owned by LECTEUR_ID {LECTEUR_ID}"
+    )
+    assert len(other_upload_chunks) > 0, (
+        f"Must include private upload chunks owned by OTHER_LECTEUR_ID {OTHER_LECTEUR_ID}"
+    )
 
 
 def test_sample_chunks_prompt_injection_chunk(sample_chunks: list[Chunk]):
@@ -102,9 +102,9 @@ def test_sample_chunks_prompt_injection_chunk(sample_chunks: list[Chunk]):
     inj_chunks = [
         c for c in sample_chunks if c.source_file == "booby_trapped_prompt_injection_test.pdf"
     ]
-    assert (
-        len(inj_chunks) == 1
-    ), "Must contain exactly one prompt injection chunk from booby_trapped_prompt_injection_test.pdf"
+    assert len(inj_chunks) == 1, (
+        "Must contain exactly one prompt injection chunk from booby_trapped_prompt_injection_test.pdf"
+    )
     chunk = inj_chunks[0]
     assert chunk.owner_id == LECTEUR_ID
     assert chunk.allowed_roles == []
@@ -127,9 +127,9 @@ def test_sample_chunks_language_and_preamble(sample_chunks: list[Chunk]):
     assert len(french_chunks) >= 1, "Must contain at least one French chunk (language='fr')"
 
     no_article_chunks = [c for c in sample_chunks if c.article is None]
-    assert (
-        len(no_article_chunks) >= 1
-    ), "Must contain at least one chunk without article (article=None)"
+    assert len(no_article_chunks) >= 1, (
+        "Must contain at least one chunk without article (article=None)"
+    )
 
 
 def test_sample_chunks_specific_edge_cases(sample_chunks: list[Chunk]):
