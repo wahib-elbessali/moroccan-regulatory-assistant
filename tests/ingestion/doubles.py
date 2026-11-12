@@ -77,3 +77,26 @@ class RecordingLeakIndex:
     def delete(self, doc_id: str) -> None:
         """Records leak index deletion."""
         self.delete_calls.append(doc_id)
+
+
+class ScriptedOCRClient:
+    """A test double for OCRClient recording calls and returning scripted responses."""
+
+    def __init__(
+        self,
+        default_text: str = "نص مستخرج بالتعرف الضوئي",
+        default_confidence: float = 0.9,
+        responses: list[tuple[str, float]] | None = None,
+    ) -> None:
+        self.call_count: int = 0
+        self.calls: list[tuple[bytes, str]] = []
+        self.default_text = default_text
+        self.default_confidence = default_confidence
+        self._responses = list(responses) if responses else []
+
+    def ocr_page(self, image: bytes, lang: str = "ar") -> tuple[str, float]:
+        self.call_count += 1
+        self.calls.append((image, lang))
+        if self._responses:
+            return self._responses.pop(0)
+        return self.default_text, self.default_confidence
