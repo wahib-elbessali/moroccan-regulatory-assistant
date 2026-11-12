@@ -565,7 +565,7 @@ erDiagram
 
 ## 13. Configuration
 
-- **`.env`**: secrets and deployment switches only (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `LEAK_HMAC_KEY`, `LEAK_API_TOKEN`, `ALLOW_CLOUD_LLM`). Never committed; `.env.example` is.
+- **`.env`**: secrets and deployment switches only (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `LEAK_HMAC_KEY`, `LEAK_API_TOKEN`, `SEARXNG_SECRET`, `ALLOW_CLOUD_LLM`). Never committed; `.env.example` is.
 - **`config.yaml`**: everything else (model names, `max_iterations`, token budget, top-k values, thresholds, and the `fake` / `real` choice for each contract during development). Keys are listed in `00-shared.md`.
 
 ---
