@@ -8,9 +8,12 @@ from collections.abc import Generator
 from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.core.config import cfg
+from src.core.db.base import Base
+
+__all__ = ["Base", "DATABASE_URL", "engine", "SessionLocal", "get_database_url", "get_db"]
 
 
 def get_database_url() -> str:
@@ -42,8 +45,6 @@ SessionLocal = sessionmaker(
     autocommit=False,
     expire_on_commit=False,
 )
-
-Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:

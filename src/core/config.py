@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -8,18 +8,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class DatabaseSettings(BaseModel):
     user: str = "postgres"
-    host: str = "localhost"
+    host: str = "postgres"
     port: int = 5432
-    name: str = "regulatory_assistant"
+    name: str = "rag"
 
 
 class AdminSettings(BaseModel):
     username: str = "admin"
-    password: str = "AdminPassword123!"
+    password: str
 
 
 class AuthSettings(BaseModel):
-    jwt_secret: str = "change_me_super_secret_key_123"
+    jwt_secret: str
     token_minutes: int = 60
     max_failed_logins: int = 5
     lockout_minutes: int = 15
@@ -48,6 +48,25 @@ class WebSettings(BaseModel):
     timeout_s: int = 5
 
 
+ContractMode = Literal["fake", "real"]
+
+
+class ContractsSettings(BaseModel):
+    retrieval: ContractMode = "fake"
+    ingestion: ContractMode = "fake"
+    document_rights: ContractMode = "fake"
+    audit: ContractMode = "fake"
+    llm: ContractMode = "fake"
+    ocr: ContractMode = "fake"
+    leak_index: ContractMode = "fake"
+    web_search: ContractMode = "fake"
+    web_agent: ContractMode = "fake"
+    models: ContractMode = "fake"
+    orchestrator: ContractMode = "fake"
+    writer: ContractMode = "fake"
+    narrator: ContractMode = "fake"
+
+
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -55,50 +74,62 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
-    POSTGRES_USER: str = Field(default="postgres")
-    POSTGRES_PASSWORD: str = Field(default="postgres")
-    POSTGRES_HOST: str = Field(default="localhost")
-    POSTGRES_PORT: int = Field(default=5432)
-    POSTGRES_DB: str = Field(default="regulatory_assistant")
+    POSTGRES_USER: str | None = Field(default=None)
+    POSTGRES_PASSWORD: str
+    POSTGRES_HOST: str | None = Field(default=None)
+    POSTGRES_PORT: int | None = Field(default=None)
+    POSTGRES_DB: str | None = Field(default=None)
     CI_POSTGRES_URL: str | None = Field(default=None)
 
     ADMIN_USERNAME: str = Field(default="admin")
-    ADMIN_PASSWORD: str = Field(default="AdminPassword123!")
-    JWT_SECRET: str = Field(default="secret-key-jwt-offline")
+    ADMIN_PASSWORD: str
+    JWT_SECRET: str
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    admin: AdminSettings = Field(default_factory=AdminSettings)
-    auth: AuthSettings = Field(default_factory=AuthSettings)
+    admin: AdminSettings | None = None
+    auth: AuthSettings | None = None
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     uploads: UploadsSettings = Field(default_factory=UploadsSettings)
     web: WebSettings = Field(default_factory=WebSettings)
+    contracts: ContractsSettings = Field(default_factory=ContractsSettings)
 
 
 def load_config() -> AppConfig:
-    settings = AppConfig()
+    settings = AppConfig()  # type: ignore[call-arg]
 
     config_yaml_path = Path("config.yaml")
     if config_yaml_path.exists():
         with open(config_yaml_path, encoding="utf-8") as f:
             yaml_data: dict[str, Any] = yaml.safe_load(f) or {}
 
+        if "database" in yaml_data:
+            settings.database = DatabaseSettings(**yaml_data["database"])
         if "retrieval" in yaml_data:
             settings.retrieval = RetrievalSettings(**yaml_data["retrieval"])
         if "uploads" in yaml_data:
             settings.uploads = UploadsSettings(**yaml_data["uploads"])
         if "auth" in yaml_data:
-            auth_dict = yaml_data["auth"]
+            auth_dict = dict(yaml_data["auth"])
             auth_dict["jwt_secret"] = settings.JWT_SECRET
             settings.auth = AuthSettings(**auth_dict)
         if "web" in yaml_data:
             settings.web = WebSettings(**yaml_data["web"])
+        if "contracts" in yaml_data:
+            settings.contracts = ContractsSettings(**yaml_data["contracts"])
 
-    settings.database = DatabaseSettings(
-        user=settings.POSTGRES_USER,
-        host=settings.POSTGRES_HOST,
-        port=settings.POSTGRES_PORT,
-        name=settings.POSTGRES_DB,
-    )
+    if settings.auth is None:
+        settings.auth = AuthSettings(jwt_secret=settings.JWT_SECRET)
+
+    # Surcharges éventuelles depuis .env / variables d'environnement
+    if settings.POSTGRES_USER is not None:
+        settings.database.user = settings.POSTGRES_USER
+    if settings.POSTGRES_HOST is not None:
+        settings.database.host = settings.POSTGRES_HOST
+    if settings.POSTGRES_PORT is not None:
+        settings.database.port = settings.POSTGRES_PORT
+    if settings.POSTGRES_DB is not None:
+        settings.database.name = settings.POSTGRES_DB
+
     settings.admin = AdminSettings(
         username=settings.ADMIN_USERNAME,
         password=settings.ADMIN_PASSWORD,

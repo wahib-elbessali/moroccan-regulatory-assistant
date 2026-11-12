@@ -19,7 +19,7 @@ from src.core.contracts.enums import (
     AccountRequestStatus,
     DocStatus,
 )
-from src.core.db.session import Base
+from src.core.db.base import Base
 
 
 def utc_now() -> datetime:

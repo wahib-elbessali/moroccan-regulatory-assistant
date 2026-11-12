@@ -6,7 +6,8 @@ from sqlalchemy import engine_from_config, pool
 import src.core.db.models  # noqa: F401
 
 # Import des modèles pour que target_metadata détecte les 8 tables
-from src.core.db.session import Base, get_database_url
+from src.core.db.base import Base
+from src.core.db.session import get_database_url
 
 config = context.config
 
