@@ -164,40 +164,39 @@ flowchart TD
 
 ```python
 def ingest(doc_id, file_path, meta, roles, owner_id):
-    rights = get_document_rights()  # P5
-    retrieval = get_retrieval()  # P2
-    leak = get_leak_index()  # P6
-    is_retry = rights.get_status(doc_id) == FAILED  # P5 — read BEFORE changing it
+    rights    = get_document_rights()                  # P5
+    retrieval = get_retrieval()                        # P2
+    leak      = get_leak_index()                       # P6
+    is_retry  = rights.get_status(doc_id) == FAILED    # P5 — read BEFORE changing it
     try:
-        rights.set_status(doc_id, EXTRACTING)  # P5
+        rights.set_status(doc_id, EXTRACTING)          # P5
         if is_retry:
-            retrieval.delete(doc_id)  # P2
-            leak.delete(doc_id)  # P6
+            retrieval.delete(doc_id)                   # P2
+            leak.delete(doc_id)                        # P6
 
-        pages = load_cache(doc_id)  # per document (P1-13)
+        pages = load_cache(doc_id)                     # per document (P1-13)
         if pages is None:
-            pages = extract(file_path, owner_id)  # §6.2
+            pages = extract(file_path, owner_id)       # §6.2
             save_cache(doc_id, pages)
 
         full_text = "\n".join(p.text for p in pages)
-        rights.set_content_hash(doc_id, make_content_hash(normalize_ar(full_text)))  # P5, shared
-        chunks = chunk_document(doc_id, pages, owner_id, meta)  # §6.3
+        rights.set_content_hash(doc_id, make_content_hash(normalize_ar(full_text)))   # P5, shared
+        chunks = chunk_document(doc_id, pages, owner_id, meta)   # §6.3
         if not chunks:
             raise InvalidInput("no text extracted")
-        rights.set_status(doc_id, CHUNKED)  # P5
+        rights.set_status(doc_id, CHUNKED)             # P5
 
-        retrieval.index(chunks)  # P2 — stored hidden; drops old chunks with index >= total_chunks
-        leak.register(doc_id, full_text)  # P6 — blocking by default
-        rights.set_status(doc_id, INDEXED)  # P5
+        retrieval.index(chunks)                        # P2 — stored hidden; drops old chunks with index >= total_chunks
+        leak.register(doc_id, full_text)               # P6 — blocking by default
+        rights.set_status(doc_id, INDEXED)             # P5
     except Exception as e:
-        rights.set_status(doc_id, FAILED, error=short_reason(e))  # P5
-        get_audit().log_action(  # P5
-            None, INGEST_FAILED, {"doc_id": doc_id, "reason": short_reason(e)}
-        )
+        rights.set_status(doc_id, FAILED, error=short_reason(e))   # P5
+        get_audit().log_action(                                    # P5
+            None, INGEST_FAILED, {"doc_id": doc_id, "reason": short_reason(e)})
         return
 
     try:
-        rights.set_document_roles(doc_id, roles)  # P5 — publishes
+        rights.set_document_roles(doc_id, roles)       # P5 — publishes
     except Exception as e:
         # P5 has already set FAILED, kept the document hidden and logged it.
         log.warning("publication failed", doc_id=doc_id, reason=short_reason(e))
@@ -211,7 +210,7 @@ def ingest(doc_id, file_path, meta, roles, owner_id):
 
 ```python
 def extract(file_path, owner_id) -> list[Page]:
-    suffix = file_path.suffix.lower()  # "X.PDF" is a PDF too
+    suffix = file_path.suffix.lower()                  # "X.PDF" is a PDF too
     if suffix == ".pdf":
         pages, ocr_count = [], 0
         for n, page in enumerate(open_pdf(file_path), start=1):
@@ -222,30 +221,29 @@ def extract(file_path, owner_id) -> list[Page]:
                 ocr_count += 1
                 if owner_id and ocr_count > cfg.ocr.max_pages_upload:
                     raise InvalidInput("too many scanned pages")
-                text, conf = get_ocr().ocr_page(render(page, dpi=300), "ar")  # P6
+                text, conf = get_ocr().ocr_page(render(page, dpi=300), "ar")   # P6
                 pages.append(Page(n, clean_ocr(nfkc(text)), ocr=True, confidence=conf))
         return remove_headers_footers(pages)
     if suffix in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
-        frames = load_image_frames(file_path)  # 1 frame, or 1 per TIFF page
+        frames = load_image_frames(file_path)              # 1 frame, or 1 per TIFF page
         if owner_id and len(frames) > cfg.ocr.max_pages_upload:
             raise InvalidInput("too many scanned pages")
         pages = []
         for n, img in enumerate(frames, start=1):
-            text, conf = get_ocr().ocr_page(preprocess(img), "ar")  # P6 (preprocess: P1)
+            text, conf = get_ocr().ocr_page(preprocess(img), "ar")   # P6 (preprocess: P1)
             pages.append(Page(n, clean_ocr(nfkc(text)), ocr=True, confidence=conf))
         return pages
     if suffix in (".docx", ".html", ".md", ".txt"):
         return [Page(1, nfkc(read_text(file_path)), ocr=False, confidence=None)]
     raise InvalidInput("unsupported format")
 
-
 def passes_quality_check(text) -> bool:
     letters = [c for c in text if c.isalpha()]
-    if len(letters) < cfg.ingestion.min_letters_per_page:  # empty or near-empty page
+    if len(letters) < cfg.ingestion.min_letters_per_page:      # empty or near-empty page
         return False
-    if share_in_ranges(text, PRESENTATION_FORMS) > 0.05:  # shaping not resolved
+    if share_in_ranges(text, PRESENTATION_FORMS) > 0.05:       # shaping not resolved
         return False
-    if share_of_reversed_words(text) > 0.3:  # e.g. "ةداملا" instead of "المادة"
+    if share_of_reversed_words(text) > 0.3:                    # e.g. "ةداملا" instead of "المادة"
         return False
     return True
 ```
@@ -257,27 +255,19 @@ def passes_quality_check(text) -> bool:
 ```python
 HEADING = r"^\s*(الكتاب|الباب|القسم|الفرع|الفصل|المادة)\s+(\d+|[٠-٩]+|<ordinal words>)(\s+مكرر)?"
 
-LEVELS = [
-    "الكتاب",
-    "الباب",
-    "القسم",
-    "الفرع",
-    "الفصل",
-]  # outermost first; P1 adds levels found in the corpus
-
+LEVELS = ["الكتاب", "الباب", "القسم", "الفرع", "الفصل"]   # outermost first; P1 adds levels found in the corpus
 
 def chunk_document(doc_id, pages, owner_id, meta) -> list[Chunk]:
     lines = [(page.number, line) for page in pages for line in page.text.splitlines()]
     article_word = "المادة" if any_heading(lines, "المادة") else "الفصل"
-    units, path, current = [], [], new_unit(article=None, hierarchy=[])  # preamble unit first
+    units, path, current = [], [], new_unit(article=None, hierarchy=[])   # preamble unit first
     for page_no, line in lines:
         h = match(HEADING, line)
         if h and h.word == article_word:
-            units.append(current)
-            current = new_unit(article=line.strip(), hierarchy=list(path))
-        elif h:  # a heading above the article level
+            units.append(current); current = new_unit(article=line.strip(), hierarchy=list(path))
+        elif h:                                              # a heading above the article level
             path = update_path(path, h.word, line.strip())
-            continue  # not part of any article's text
+            continue                                         # not part of any article's text
         current.add(line, page_no)
     units.append(current)
     units = [u for u in units if u.text.strip()]
@@ -286,33 +276,19 @@ def chunk_document(doc_id, pages, owner_id, meta) -> list[Chunk]:
     units = split_long(units, cfg.ingestion.max_chunk_chars)  # paragraph boundaries, same article
 
     total = len(units)
-    return [
-        Chunk(
-            chunk_id=make_chunk_id(doc_id, i),  # shared
-            doc_id=doc_id,
-            chunk_index=i,
-            total_chunks=total,
-            text=u.text,
-            text_normalized=normalize_ar(u.text),
-            title=meta.title,
-            article=u.article,
-            hierarchy=u.hierarchy,
-            page_start=u.first_page,
-            page_end=u.last_page,
-            language=detect_language(u.text),  # shared §4b
-            source_file=meta.source_file,
-            source=meta.source,
-            date=meta.date,
-            allowed_roles=[],
-            owner_id=owner_id,
-        )
-        for i, u in enumerate(units)
-    ]
-
+    return [Chunk(chunk_id=make_chunk_id(doc_id, i),   # shared
+                  doc_id=doc_id, chunk_index=i, total_chunks=total,
+                  text=u.text, text_normalized=normalize_ar(u.text),
+                  title=meta.title, article=u.article, hierarchy=u.hierarchy,
+                  page_start=u.first_page, page_end=u.last_page,
+                  language=detect_language(u.text),            # shared §4b
+                  source_file=meta.source_file, source=meta.source, date=meta.date,
+                  allowed_roles=[], owner_id=owner_id)
+            for i, u in enumerate(units)]
 
 def update_path(path, word, heading) -> list[str]:
     level = LEVELS.index(word)
-    kept = [p for p in path if LEVELS.index(heading_word(p)) < level]  # keep outer levels only
+    kept = [p for p in path if LEVELS.index(heading_word(p)) < level]   # keep outer levels only
     return kept + [heading]
 ```
 
@@ -322,8 +298,8 @@ Example: `الكتاب الأول` → `الباب الأول` → `المادة
 
 ```python
 def delete(doc_id):
-    get_retrieval().delete(doc_id)  # P2 — idempotent
-    get_leak_index().delete(doc_id)  # P6 — idempotent
+    get_retrieval().delete(doc_id)                             # P2 — idempotent
+    get_leak_index().delete(doc_id)                            # P6 — idempotent
     remove_if_exists(f"cache/extracted/{doc_id}.json")
 ```
 

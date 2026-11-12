@@ -133,19 +133,19 @@ Every call to a function owned by **another part** is marked with its owner in a
 
 ```python
 async def run(question, ctx, use_web=True):
-    language = detect_language(question)  # shared
-    events = asyncio.Queue()  # ProcessEvents, then the result
-    loop = asyncio.get_running_loop()
-    emit = lambda e: loop.call_soon_threadsafe(events.put_nowait, e)  # usable from any thread
+    language = detect_language(question)                           # shared
+    events   = asyncio.Queue()                                     # ProcessEvents, then the result
+    loop     = asyncio.get_running_loop()
+    emit     = lambda e: loop.call_soon_threadsafe(events.put_nowait, e)   # usable from any thread
 
     state = State(question=question, ctx=ctx, use_web=use_web, language=language)
-    task = asyncio.create_task(asyncio.to_thread(GRAPH.invoke, state, {"emit": emit}))
+    task  = asyncio.create_task(asyncio.to_thread(GRAPH.invoke, state, {"emit": emit}))
     task.add_done_callback(lambda t: emit(END_OF_GRAPH))
 
-    while (item := await events.get()) is not END_OF_GRAPH:  # narrate as events arrive
-        async for text in safe_narrate(item, language):  # §6.3
+    while (item := await events.get()) is not END_OF_GRAPH:        # narrate as events arrive
+        async for text in safe_narrate(item, language):            # §6.3
             yield {"event": "thinking", "data": {"text": text}}
-        yield {"event": "thinking", "data": {"text": "\n"}}  # end of this step's narration
+        yield {"event": "thinking", "data": {"text": "\n"}}            # end of this step's narration
 
     try:
         answer = task.result()["answer"]
@@ -153,10 +153,7 @@ async def run(question, ctx, use_web=True):
     except AppError as e:
         yield {"event": "error", "data": {"code": e.code, "message": GENERIC[e.code]}}
     except Exception:
-        yield {
-            "event": "error",
-            "data": {"code": "service_error", "message": GENERIC["service_error"]},
-        }
+        yield {"event": "error", "data": {"code": "service_error", "message": GENERIC["service_error"]}}
     # the route appends {"event": "done", ...} and calls log_query (P5 helper)
 ```
 
@@ -305,7 +302,7 @@ sequenceDiagram
 ```python
 async def safe_narrate(event, language):
     try:
-        async for text in get_narrator().narrate(event, language):  # P4
+        async for text in get_narrator().narrate(event, language):   # P4
             yield text
     except Exception as e:
         log.warning("narration failed", step=event.step, reason=type(e).__name__)

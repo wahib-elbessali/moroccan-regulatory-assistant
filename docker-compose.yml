@@ -1,0 +1,168 @@
+# P6 infrastructure. Spec: docs/specs/P6-sovereignty.md §3.1; architecture §5.
+# Networks: internal (no internet), front (host-reachable, no internet route), egress (internet).
+# Only web-search, searxng and cloud-gateway are ever attached to egress.
+# Services marked PLACEHOLDER only answer 200 on their port, so the stack starts before the
+# real code exists. Each one is replaced by its real image when its part is ready.
+name: moroccan-regulatory-assistant
+
+x-health: &health
+  interval: 5s
+  timeout: 3s
+  retries: 12
+  start_period: 5s
+
+services:
+  # ---------------------------------------------------------------- application (front + internal)
+  api:  # PLACEHOLDER: P5 skeleton and the other parts' code
+    image: python:3.11-slim
+    working_dir: /tmp
+    command: ["python", "-m", "http.server", "8000"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/')"]
+    networks: [internal, front]
+    ports:
+      - "8000:8000"
+    environment:
+      MODE: ${MODE:-local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      LEAK_HMAC_KEY: ${LEAK_HMAC_KEY}
+      LEAK_API_TOKEN: ${LEAK_API_TOKEN}
+      ALLOW_CLOUD_LLM: ${ALLOW_CLOUD_LLM:-false}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data/raw:/app/data/raw:ro
+      - uploads:/app/storage/uploads
+      - extract_cache:/app/cache/extracted
+      - indexes:/app/data/indexes
+      - hf_cache:/hf:ro  # Qwen tokenizer files downloaded by `make models`
+    depends_on:
+      postgres: {condition: service_healthy}
+      qdrant: {condition: service_healthy}
+      llm: {condition: service_healthy}
+      models: {condition: service_healthy}
+
+  ui:  # PLACEHOLDER: P7 app (port 3000 assumed, to confirm with P7)
+    image: python:3.11-slim
+    working_dir: /tmp
+    command: ["python", "-m", "http.server", "3000"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:3000/')"]
+    networks: [internal, front]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+
+  # ---------------------------------------------------------------- data stores (internal only)
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: rag        # = database.name in config.yaml
+      POSTGRES_USER: postgres # = database.user in config.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      <<: *health
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rag"]
+    networks: [internal]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    healthcheck:
+      <<: *health
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
+    networks: [internal]
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # ---------------------------------------------------------------- model serving (internal only)
+  llm:
+    image: ollama/ollama:latest  # models are pre-pulled by `make models`, never at startup
+    healthcheck:
+      <<: *health
+      test: ["CMD", "ollama", "list"]
+    networks: [internal]
+    volumes:
+      - ollama_models:/root/.ollama
+    # GPU (optional, to test on the demo machine): add `gpus: all`
+
+  models:  # PLACEHOLDER: bge-m3 + bge-reranker-v2-m3 over HTTP (day 3)
+    image: python:3.11-slim
+    working_dir: /tmp
+    command: ["python", "-m", "http.server", "8080"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/')"]
+    networks: [internal]
+    volumes:
+      - hf_cache:/hf:ro
+
+  ocr:  # Tesseract with the `ara` model (and `fra`)
+    build: ./services/ocr
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8070/health')"]
+    networks: [internal]
+
+  # ---------------------------------------------------------------- the only way out (egress)
+  web-search:  # PLACEHOLDER: leak filter + leak index + proxy to searxng (day 4)
+    image: python:3.11-slim
+    working_dir: /tmp
+    command: ["python", "-m", "http.server", "8090"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8090/')"]
+    networks: [internal, egress]
+    environment:
+      LEAK_HMAC_KEY: ${LEAK_HMAC_KEY}
+      LEAK_API_TOKEN: ${LEAK_API_TOKEN}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - leak_data:/data
+
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/')"]
+    networks: [egress]
+    volumes:
+      - ./services/searxng:/etc/searxng
+
+  cloud-gateway:  # PLACEHOLDER: dev only, profile `cloud`
+    profiles: [cloud]
+    image: python:3.11-slim
+    working_dir: /tmp
+    command: ["python", "-m", "http.server", "8000"]
+    networks: [internal, egress]
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  front:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+  egress:
+    driver: bridge
+
+volumes:
+  pg_data:
+  qdrant_data:
+  leak_data:
+  uploads:
+  extract_cache:
+  indexes:
+  ollama_models:
+    name: rag_ollama_models  # fixed names: used by services/download_models.py
+  hf_cache:
+    name: rag_hf_cache

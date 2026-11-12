@@ -1,6 +1,16 @@
-"""Contract fake implementations for testing."""
+"""Fake implementations of shared contracts."""
 
-from src.core.contracts.fakes.audit import FakeAudit
-from src.core.contracts.fakes.rights import FakeDocumentRights
+from src.core.contracts.fakes.llm import (
+    FakeLLMClient,
+    FakeModelsClient,
+    FakeOCRClient,
+)
+from src.core.contracts.fakes.web import FakeWebAgent, FakeWebSearch
 
-__all__ = ["FakeAudit", "FakeDocumentRights"]
+__all__ = [
+    "FakeLLMClient",
+    "FakeModelsClient",
+    "FakeOCRClient",
+    "FakeWebAgent",
+    "FakeWebSearch",
+]
