@@ -17,6 +17,7 @@ from src.core.contracts.fakes.leak import FakeLeakIndex
 INTERNAL_DOC = "internal-doc"
 PUBLIC_DOC = "public-doc"
 UNKNOWN_DOC = "never-registered"
+PROBE_DOC = "contract-probe"  # deleted once to check web-search answers; never registered
 
 INTERNAL_TEXT = (
     "تلتزم الوكالة الوطنية بحماية المعطيات الشخصية للمرتفقين وفق المذكرة الداخلية رقم 12"
@@ -40,9 +41,11 @@ def _real_leak_index() -> LeakIndex:
     if factory is None:
         pytest.skip(f"{REAL_FACTORY}() does not exist yet")
     try:
-        return factory()
+        impl = factory()
+        impl.delete(PROBE_DOC)  # creating the client does not contact web-search; this does
     except Exception as exc:  # web-search unreachable, missing LEAK_HMAC_KEY…
         pytest.skip(f"real leak index unusable ({type(exc).__name__})")
+    return impl
 
 
 @pytest.fixture(params=["fake", "real"])
