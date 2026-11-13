@@ -9,9 +9,12 @@ import pytest
 
 from src.ingestion.arabic_pdf import (
     extract_digital_pdf_pages,
+    fix_inverted_headings,
     fix_span_ligatures,
     is_arabic_letter,
 )
+from src.ingestion.chunking import chunk_document
+from src.ingestion.extract import extract
 
 
 def test_is_arabic_letter() -> None:
@@ -138,3 +141,46 @@ def test_sgg_7435_page_4_regression() -> None:
     page_4_text = pages[3]  # Page 4 (0-indexed 3)
     assert "المادة الأولى" in page_4_text
     assert "املادة" not in page_4_text
+
+
+def test_fix_inverted_headings_required_cases() -> None:
+    """Explicit test cases: reverses inverted headings into logical Arabic order."""
+    assert fix_inverted_headings("2 المادة") == "المادة 2"
+    assert fix_inverted_headings("12 مكرر المادة") == "المادة 12 مكرر"
+    assert fix_inverted_headings("الأولى المادة") == "المادة الأولى"
+
+    # Additional legal title words and numerals
+    assert fix_inverted_headings("2 الفصل") == "الفصل 2"
+    assert fix_inverted_headings("1 الباب") == "الباب 1"
+    assert fix_inverted_headings("3 القسم") == "القسم 3"
+    assert fix_inverted_headings("4 الفرع") == "الفرع 4"
+    assert fix_inverted_headings("5 الكتاب") == "الكتاب 5"
+    assert fix_inverted_headings("الثانية المادة") == "المادة الثانية"
+    assert fix_inverted_headings("مكرر 12 المادة") == "المادة 12 مكرر"
+
+
+def test_fix_inverted_headings_invariants() -> None:
+    """Lines already in correct order, with surrounding text, or unsupported words are never modified."""
+    assert fix_inverted_headings("المادة 2") == "المادة 2"
+    assert fix_inverted_headings("من 2 المادة التالية") == "من 2 المادة التالية"
+    assert fix_inverted_headings("2 كتاب") == "2 كتاب"
+    assert fix_inverted_headings("المادة 12 مكرر") == "المادة 12 مكرر"
+    assert fix_inverted_headings("المادة الأولى") == "المادة الأولى"
+
+
+def test_sgg_7412_chunker_headings_substantially_increased() -> None:
+    """Read-only test on sgg_7412.pdf: chunker detected headings jump from 4 to over 100."""
+    pdf_path = Path("data/raw/public/sgg_7412.pdf")
+    if not pdf_path.is_file():
+        pytest.skip("sgg_7412.pdf not present in data/raw/public/")
+
+    pages = extract(pdf_path)
+    chunks = chunk_document("sgg_7412", pages)
+
+    headings = {c.article for c in chunks if c.article is not None}
+    # Before the fix, only 3 distinct headings (4 occurrences) were detected
+    # With inverted headings reordered, 171 distinct headings are identified
+    assert len(headings) > 100
+    assert "المادة 2" in headings
+    assert "المادة 3" in headings
+    assert "المادة 10" in headings
