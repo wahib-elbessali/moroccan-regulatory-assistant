@@ -1,0 +1,15 @@
+# Read the documentation before extending the defaults:
+# https://docs.searxng.org/admin/settings/
+
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 10.0
+  source_ips:
+    - "0.0.0.0"
+  enable_http2: false
