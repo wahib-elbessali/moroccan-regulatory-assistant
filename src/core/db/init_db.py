@@ -7,7 +7,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, update
 
-from src.core.contracts.enums import RoleName
+from src.core.config import cfg
+from src.core.contracts.enums import DocStatus, RoleName
 from src.core.db.models import Document, Role, User
 from src.core.db.session import SessionLocal
 from src.core.security import hash_password
@@ -16,8 +17,8 @@ from src.core.security import hash_password
 def run_migrations() -> None:
     """Apply Alembic migrations to head."""
     root_dir = Path(__file__).resolve().parents[3]
-    alembic_ini_path = root_dir / "alembic.ini"
-    alembic_cfg = Config(str(alembic_ini_path))
+    ini = Path(os.getenv("ALEMBIC_INI", root_dir / "alembic.ini"))
+    alembic_cfg = Config(str(ini))
     alembic_cfg.set_main_option(
         "script_location", str(root_dir / "src" / "core" / "db" / "migrations")
     )
@@ -25,45 +26,41 @@ def run_migrations() -> None:
 
 
 def init_db() -> None:
-    """Initialize database, create initial admin, and recover interrupted documents."""
+    """Migrate, create the first admin if none exists, and recover interrupted documents."""
     run_migrations()
 
-    admin_username = os.getenv("ADMIN_USERNAME", "admin")
-    admin_password = os.getenv("ADMIN_PASSWORD")
-    if not admin_password:
-        raise RuntimeError("ADMIN_PASSWORD environment variable must be set.")
-
     with SessionLocal() as session:
-        stmt_role = select(Role).where(Role.name == RoleName.ADMIN.value)
-        admin_role = session.scalars(stmt_role).first()
+        admin_role = session.scalars(select(Role).where(Role.name == RoleName.ADMIN.value)).first()
+        if admin_role is None:
+            raise RuntimeError("Role 'admin' not found: the migration did not seed the roles.")
 
-        assert (
-            admin_role is not None
-        ), "Role 'admin' not found in database. Ensure migrations ran successfully."
-
-        admin_role_id = admin_role.id
-
-        stmt_user = select(User).where(User.username == admin_username)
-        existing_admin = session.scalars(stmt_user).first()
-        if existing_admin is None:
-            new_admin = User(
-                username=admin_username,
-                hashed_password=hash_password(admin_password),
-                role_id=admin_role_id,
+        has_admin = session.scalars(
+            select(User.id).where(User.role_id == admin_role.id).limit(1)
+        ).first()
+        if has_admin is None:
+            session.add(
+                User(
+                    username=cfg.ADMIN_USERNAME,
+                    hashed_password=hash_password(cfg.ADMIN_PASSWORD.get_secret_value()),
+                    full_name="Administrateur",
+                    role_id=admin_role.id,
+                )
             )
-            session.add(new_admin)
 
-        # P5-12b : Transition vers 'failed' pour les statuts inachevés
-        stmt_recover = (
+        # P5-12b : un document interrompu en cours d'ingestion passe en 'failed'.
+        session.execute(
             update(Document)
-            .where(Document.status.in_(["received", "extracting", "chunked"]))
-            .values(
-                status="failed",
-                error="interrupted",
+            .where(
+                Document.status.in_(
+                    [
+                        DocStatus.RECEIVED.value,
+                        DocStatus.EXTRACTING.value,
+                        DocStatus.CHUNKED.value,
+                    ]
+                )
             )
+            .values(status=DocStatus.FAILED.value, error="interrupted")
         )
-        session.execute(stmt_recover)
-
         session.commit()
 
 

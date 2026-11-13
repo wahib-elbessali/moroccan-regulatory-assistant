@@ -15,6 +15,8 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
+from src.ingestion.ordinals import ORDINALS_PATTERN
+
 if TYPE_CHECKING:
     import pymupdf
 
@@ -104,6 +106,73 @@ def count_impossible_patterns(text: str) -> int:
     return len(IMPOSSIBLE_PATTERNS_RE.findall(text))
 
 
+# Allowed heading words for inverted heading line reordering (§6.2)
+INVERTED_TITLE_WORDS_PATTERN: str = r"(?:المادة|الفصل|الباب|القسم|الفرع|الكتاب)"
+INVERTED_NUM_OR_ORDINAL_PATTERN: str = rf"(?:[0-9٠-٩]+(?:[-–][0-9٠-٩]+)?|{ORDINALS_PATTERN})"
+INVERTED_MOKARRAR_PATTERN: str = r"(?:مكرر\s+مرتين|مكرر)"
+
+# Pattern 1: [num/ord] [مكرر]? [title_word] -> e.g. "2 المادة", "12 مكرر المادة", "الأولى المادة"
+INVERTED_HEADING_P1: re.Pattern[str] = re.compile(
+    rf"^({INVERTED_NUM_OR_ORDINAL_PATTERN})\s+(?:({INVERTED_MOKARRAR_PATTERN})\s+)?({INVERTED_TITLE_WORDS_PATTERN})$",
+    re.UNICODE,
+)
+
+# Pattern 2: [مكرر]? [num/ord] [title_word] -> e.g. "مكرر 12 المادة"
+INVERTED_HEADING_P2: re.Pattern[str] = re.compile(
+    rf"^(?:({INVERTED_MOKARRAR_PATTERN})\s+)?({INVERTED_NUM_OR_ORDINAL_PATTERN})\s+({INVERTED_TITLE_WORDS_PATTERN})$",
+    re.UNICODE,
+)
+
+
+def fix_inverted_headings(text: str) -> str:
+    """Restore logical order for lines that are strictly inverted headings.
+
+    A line (after strip) composed exactly of:
+      [مكرر] [numéro / ordinal] puis [mot de titre: المادة, الفصل, الباب, القسم, الفرع, الكتاب]
+    in that inverted order, is rewritten as: '<title_word> <num_or_ordinal> [مكرر]'.
+
+    Lines containing any other tokens (e.g. 'من 2 المادة التالية') or words outside the
+    explicit title list (e.g. '2 كتاب') or lines already in logical order ('المادة 2')
+    are preserved without modification.
+    """
+    if not text:
+        return text
+
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+
+    for line in lines:
+        endswith_nl = line.endswith(("\r\n", "\n", "\r"))
+        nl = ""
+        raw_line = line
+        if endswith_nl:
+            if line.endswith("\r\n"):
+                nl = "\r\n"
+                raw_line = line[:-2]
+            else:
+                nl = line[-1]
+                raw_line = line[:-1]
+
+        stripped = raw_line.strip()
+        m1 = INVERTED_HEADING_P1.match(stripped)
+        if m1:
+            item, mok, title = m1.groups()
+            rewritten = f"{title} {item} {mok}".strip() if mok else f"{title} {item}"
+            out.append(rewritten + nl)
+            continue
+
+        m2 = INVERTED_HEADING_P2.match(stripped)
+        if m2:
+            mok, item, title = m2.groups()
+            rewritten = f"{title} {item} {mok}".strip()
+            out.append(rewritten + nl)
+            continue
+
+        out.append(line)
+
+    return "".join(out)
+
+
 def extract_digital_pdf_pages(
     doc: pymupdf.Document,
 ) -> tuple[list[str], str, dict[str, int]]:
@@ -133,10 +202,10 @@ def extract_digital_pdf_pages(
     diff = raw_impossible - corrected_impossible
     if corrected_impossible < raw_impossible and diff >= 3:
         variant = "corrected"
-        chosen_pages = corrected_pages
+        chosen_pages = [fix_inverted_headings(p) for p in corrected_pages]
     else:
         variant = "raw"
-        chosen_pages = raw_pages
+        chosen_pages = [fix_inverted_headings(p) for p in raw_pages]
 
     stats = {
         "raw_impossible": raw_impossible,
