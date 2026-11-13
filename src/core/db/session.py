@@ -22,7 +22,7 @@ def get_database_url() -> str:
     if ci_url:
         return ci_url
 
-    password = os.getenv("POSTGRES_PASSWORD", cfg.POSTGRES_PASSWORD)
+    password = os.getenv("POSTGRES_PASSWORD", cfg.POSTGRES_PASSWORD.get_secret_value())
     encoded_password = quote_plus(password)
     return (
         f"postgresql+psycopg://{cfg.database.user}:{encoded_password}"
@@ -33,7 +33,7 @@ def get_database_url() -> str:
 DATABASE_URL = get_database_url()
 
 engine = create_engine(
-    DATABASE_URL,
+    cfg.database_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
