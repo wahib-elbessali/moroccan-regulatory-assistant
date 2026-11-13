@@ -22,7 +22,7 @@ Everything runs **locally**, in one `docker compose`, with **one controlled exit
 | The leak index and leak filter | What the narration says (P4) |
 | Network isolation and offline tests | Storing the web switches (P5) |
 
-Code: `src/core/llm/`, `src/agents/web/`, `src/core/leak/`, `services/web-search/`, `services/models/`, `docker-compose.yml`, `Makefile`. Tests: `tests/sovereignty/`.
+Code: `src/core/llm/`, `src/agents/web/`, `src/core/leak/`, `services/web-search/`, `services/models/`, `services/gateway/`, `docker-compose.yml`, `Makefile`. Tests: `tests/sovereignty/`.
 
 ---
 
@@ -32,10 +32,10 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 ### 3.1 Infrastructure
 
-- **P6-01** MUST provide `docker-compose.yml` with the services of architecture §5: `api`, `ui`, `postgres`, `qdrant`, `llm` (Ollama), `models`, `ocr`, `web-search`, `searxng`, and `cloud-gateway` (profile `cloud` only). `config.yaml` is mounted read-only into `api`, `ui` and `web-search`.
+- **P6-01** MUST provide `docker-compose.yml` with the services of architecture §5: `gateway`, `api`, `ui`, `postgres`, `qdrant`, `llm` (Ollama), `models`, `ocr`, `web-search`, `searxng`, and `cloud-gateway` (profile `cloud` only). `config.yaml` is mounted read-only into `api`, `ui` and `web-search`.
 - **P6-01b** MUST configure the `postgres` service so it creates the database `database.name` owned by `database.user` (`POSTGRES_DB`, `POSTGRES_USER` from those `config.yaml` values, `POSTGRES_PASSWORD` from `.env`), on the `internal` network only, with its data in the volume `pg_data`.
 - **P6-01c** MUST give `api` the named volumes `uploads` (`storage/uploads`), `extract_cache` (`cache/extracted`) and `indexes` (`data/indexes`), and mount `data/raw` read-only, so uploads, the extraction cache and the corpus survive a rebuild.
-- **P6-02** MUST declare three networks: `internal` with `internal: true`; `front`, a bridge with IP masquerade turned off (`com.docker.network.bridge.enable_ip_masquerade: "false"`), reachable from the host but with no route to the internet; and `egress`. `api` and `ui` are on `internal` + `front` and publish their ports there. Only `web-search`, `searxng` and `cloud-gateway` are attached to `egress`. Every other service is on `internal` only. Checked on day 2.
+- **P6-02** MUST declare three networks: `internal` with `internal: true`; `front`, a bridge reachable from the host; and `egress`. Only `gateway` (nginx, config in `services/gateway/`) is on `front` + `internal` and publishes ports to the host: `:3000` → `ui`, `:8000` → `api`, with response buffering off (`proxy_buffering off`) so the `/ask` stream arrives live. `api` and `ui` are on `internal` only and publish no ports: a bridge with IP masquerade turned off still reaches the internet on Docker Desktop, `internal: true` does not. Only `web-search`, `searxng` and `cloud-gateway` are attached to `egress`. Every other service (all but these and `gateway`) is on `internal` only. Checked on day 2.
 - **P6-03** MUST provide the profiles `local` (default), `light` and `cloud`, selected by `mode` in `config.yaml` and the matching compose profile.
 - **P6-04** MUST provide `make models`, which downloads every model (LLMs, the Qwen tokenizer files, bge-m3, bge-reranker-v2-m3, OCR model) into Docker volumes. After it has run once, `docker compose up` MUST work with no internet access.
 - **P6-05** MUST provide `make up`, `make up-light`, `make down`, `make test-isolation`, and `make seed` (runs P1's `seed` inside `api`, P1-33). Each target is one line in the `Makefile` and is documented in `README.md`.
