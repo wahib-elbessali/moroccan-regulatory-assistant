@@ -18,6 +18,7 @@ from PIL import Image, ImageEnhance, ImageSequence
 from src.core.contracts.errors import InvalidInput
 from src.core.contracts.protocols import OCRClient
 
+from .arabic_pdf import extract_digital_pdf_pages
 from .models import Page
 from .ocr_clean import clean_ocr, remove_headers_footers
 from .quality import passes_quality_check
@@ -190,11 +191,13 @@ def _extract_pdf(
     ocr_confidences: list[float] = []
 
     try:
+        # Extract digital pages with conditional Arabic ligature repair (P1-07, §6.2)
+        candidate_pages, _, _ = extract_digital_pdf_pages(doc)
+
         for page_index in range(len(doc)):
             n = page_index + 1
             page = doc[page_index]
-            raw_text = page.get_text()
-            text = sanitize_text(raw_text)
+            text = sanitize_text(candidate_pages[page_index])
 
             if passes_quality_check(text, min_letters=min_letters_per_page):
                 pages.append(Page(number=n, text=text, ocr=False, confidence=None))

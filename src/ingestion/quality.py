@@ -58,6 +58,10 @@ FREQUENT_WORDS: frozenset[str] = frozenset(
 )
 
 
+# Pattern matching impossible Arabic ligature artifact sequences
+IMPOSSIBLE_PATTERNS_RE: re.Pattern[str] = re.compile(r"ا[أإآ]ل|هللا|املادة", re.UNICODE)
+
+
 def share_in_ranges(text: str, ranges: list[tuple[int, int]]) -> float:
     """Compute proportion of non-whitespace characters falling in given Unicode ranges."""
     chars = [c for c in text if not c.isspace()]
@@ -88,6 +92,15 @@ def share_of_reversed_words(text: str) -> float:
     return reversed_count / len(candidates)
 
 
+def share_of_impossible_patterns(text: str) -> float:
+    """Compute proportion of words containing impossible Arabic ligature patterns."""
+    words = [w for w in text.split() if any(c.isalpha() for c in w)]
+    if not words:
+        return 0.0
+    matching = sum(1 for w in words if IMPOSSIBLE_PATTERNS_RE.search(w))
+    return matching / len(words)
+
+
 def passes_quality_check(text: str, min_letters: int = 50) -> bool:
     """Check whether extracted page text passes quality standards (P1-08, §6.2).
 
@@ -104,5 +117,7 @@ def passes_quality_check(text: str, min_letters: int = 50) -> bool:
     if share_in_ranges(text, PRESENTATION_FORMS) > 0.05:
         return False
     if share_of_reversed_words(text) > 0.3:
+        return False
+    if share_of_impossible_patterns(text) > 0.05:
         return False
     return True

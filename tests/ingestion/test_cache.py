@@ -10,7 +10,7 @@ from src.ingestion.models import Page
 
 
 def test_save_and_load_cache(tmp_path: Path) -> None:
-    """Cache correctly stores pages with 'version': 1 and loads them identically."""
+    """Cache correctly stores pages with 'version': 2 and loads them identically."""
     doc_id = "test_doc_001"
     pages = [
         Page(number=1, text="Page 1 text", ocr=False, confidence=None),
@@ -23,7 +23,7 @@ def test_save_and_load_cache(tmp_path: Path) -> None:
     # Verify JSON structure
     with open(saved_path, encoding="utf-8") as f:
         data = json.load(f)
-    assert data["version"] == 1
+    assert data["version"] == 2
     assert len(data["pages"]) == 2
     assert data["pages"][0]["page"] == 1
     assert data["pages"][0]["text"] == "Page 1 text"
