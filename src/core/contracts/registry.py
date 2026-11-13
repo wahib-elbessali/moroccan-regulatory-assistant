@@ -1,6 +1,14 @@
-"""Service registry providing singleton dependency access for all contracts (00-shared §9)."""
+"""Registre des services (00-shared §9).
+
+Chaque `get_*()` lit `cfg.contracts.<nom>` ("fake" ou "real") dans config.yaml et garde UNE instance
+par processus. `override(nom, instance)` et `reset()` servent aux tests.
+
+Un service dont l'implémentation n'existe pas encore (module absent) lève `NotImplementedError`
+avec un message clair, jamais un KeyError.
+"""
 
 import importlib
+import threading
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -21,9 +29,7 @@ from src.core.contracts.protocols import (
     Writer,
 )
 
-_instances: dict[str, Any] = {}
-_overrides: dict[str, Any] = {}
-
+# nom -> ((module du fake, classe), (module du réel, fabrique))
 _FACTORIES: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
     "retrieval": (
         ("src.core.contracts.fakes.retrieval", "FakeRetrieval"),
@@ -79,47 +85,70 @@ _FACTORIES: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
     ),
 }
 
+_instances: dict[str, Any] = {}  # une instance par processus (cache ou override)
+_lock = threading.RLock()  # RLock : un fake peut appeler le registre pendant sa construction
+
 
 def override(name: str, instance: Any) -> None:
-    """Replace a service instance for testing (00-shared §9)."""
-    _overrides[name] = instance
-    _instances[name] = instance
+    """Remplace un service (tests). Reste actif jusqu'à `reset()`."""
+    with _lock:
+        _instances[name] = instance
 
 
 def reset() -> None:
-    """Clear all cached and overridden service instances (00-shared §9)."""
-    _overrides.clear()
-    _instances.clear()
+    """Oublie toutes les instances et tous les remplacements."""
+    with _lock:
+        _instances.clear()
 
 
-def _load_target(module_path: str, attr_name: str) -> Callable[[], Any]:
-    module = importlib.import_module(module_path)
+def _fake_kwargs(name: str) -> dict[str, Any]:
+    """Réglages de config.yaml transmis au constructeur d'un fake (seulement en mode fake)."""
+    if name == "retrieval":
+        return {
+            "data_dir": cfg.fakes.data_dir,
+            "top_k_final": cfg.retrieval.top_k_final,
+            "rerank_top_n": cfg.retrieval.rerank_top_n,
+        }
+    return {}
+
+
+def _load(module_path: str, attr_name: str) -> Callable[..., Any]:
+    """Importe la fabrique. `NotImplementedError` seulement si le module visé n'existe pas encore."""
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError as err:
+        # Un module absent À L'INTÉRIEUR du code de l'autre partie (dépendance manquante) reste
+        # une vraie erreur : on ne la déguise pas en "pas encore disponible".
+        if err.name is None or not (
+            module_path == err.name or module_path.startswith(err.name + ".")
+        ):
+            raise
+        raise NotImplementedError(f"{module_path} n'existe pas encore") from err
     factory = getattr(module, attr_name, None)
-    if factory is None or not callable(factory):
-        raise NotImplementedError(f"Factory '{module_path}:{attr_name}' is not implemented yet.")
-    return cast(Callable[[], Any], factory)
+    if not callable(factory):
+        raise NotImplementedError(f"{module_path}:{attr_name} n'existe pas encore")
+    return cast(Callable[..., Any], factory)
 
 
 def _get_service(name: str) -> Any:
-    if name in _overrides:
-        return _overrides[name]
-    if name in _instances:
-        return _instances[name]
+    with _lock:
+        if name in _instances:
+            return _instances[name]
 
-    mode = getattr(cfg.contracts, name, "fake")
-    fake_spec, real_spec = _FACTORIES[name]
-    module_path, attr_name = real_spec if mode == "real" else fake_spec
+        mode = cfg.contracts.get(name, "fake")  # contracts est un dict (config.py)
+        fake_spec, real_spec = _FACTORIES[name]
+        module_path, attr_name = real_spec if mode == "real" else fake_spec
 
-    try:
-        factory = _load_target(module_path, attr_name)
-        instance = factory()
-    except (ModuleNotFoundError, AttributeError) as err:
-        raise NotImplementedError(
-            f"Service '{name}' (mode={mode}) is not available yet ({module_path}:{attr_name})."
-        ) from err
+        try:
+            factory = _load(module_path, attr_name)
+        except NotImplementedError as err:
+            raise NotImplementedError(
+                f"Service '{name}' (mode={mode}) indisponible : {err}"
+            ) from err
 
-    _instances[name] = instance
-    return instance
+        instance = factory(**_fake_kwargs(name)) if mode != "real" else factory()
+        _instances[name] = instance
+        return instance
 
 
 def get_retrieval() -> Retrieval:

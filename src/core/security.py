@@ -14,8 +14,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from src.core.config import cfg
-from src.core.contracts.errors import Unauthenticated
-from src.core.contracts.models import UserContext
+from src.core.contracts.errors import InvalidInput, Unauthenticated
+from src.core.contracts.models import (
+    INTERNAL_ROLES,
+    PRIVATE_ROLES,
+    PUBLIC_ROLES,
+    UserContext,
+    is_public,
+)
 from src.core.db.models import User
 from src.core.db.session import get_db
 
@@ -48,7 +54,7 @@ def create_access_token(
     expires_delta: timedelta | None = None,
 ) -> str:
     """Issue a minimal HS256 JWT access token holding only `sub` and `exp` (P5-15)."""
-    secret_key = os.getenv("JWT_SECRET") or cfg.JWT_SECRET
+    secret_key = os.getenv("JWT_SECRET") or cfg.JWT_SECRET.get_secret_value()
     if not secret_key:
         raise RuntimeError("JWT_SECRET environment variable must be set.")
 
@@ -107,6 +113,22 @@ def get_current_user_context(
     )
 
 
+def validate_roles(roles: list[str], *, private: bool = False) -> list[str]:
+    """Validate document roles according to 00-shared §5.1 and P5-20 / P5-26b."""
+    unique_roles = list(dict.fromkeys(roles))
+    if private:
+        if unique_roles != PRIVATE_ROLES:
+            raise InvalidInput("Private uploads must have no roles.")
+        return []
+
+    if set(unique_roles) == set(PUBLIC_ROLES) and len(unique_roles) == len(PUBLIC_ROLES):
+        return list(PUBLIC_ROLES)
+    if set(unique_roles) == set(INTERNAL_ROLES) and len(unique_roles) == len(INTERNAL_ROLES):
+        return list(INTERNAL_ROLES)
+
+    raise InvalidInput("Document roles must be either ['lecteur', 'editeur'] or ['editeur'].")
+
+
 get_current_usercontext = get_current_user_context
 
 __all__ = [
@@ -118,4 +140,6 @@ __all__ = [
     "decode_access_token",
     "get_current_user_context",
     "get_current_usercontext",
+    "validate_roles",
+    "is_public",
 ]
