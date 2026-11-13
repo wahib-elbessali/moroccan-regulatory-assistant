@@ -166,6 +166,10 @@ def checked_excerpt(excerpt: str, source_text: str, min_chars: int) -> str | Non
     """Return a verifiable excerpt copied from the source, or ``None``."""
     from src.ingestion.normalize import normalize_ar  # P1 owns normalization.
 
+    sentences = [part for part in _CLAIM_BOUNDARY_RE.split(excerpt) if part.strip()]
+    if len(sentences) > 1:
+        return None
+
     normalized_excerpt = normalize_ar(excerpt)
     if len(normalized_excerpt) < min_chars:
         return None

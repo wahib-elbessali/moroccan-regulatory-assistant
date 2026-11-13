@@ -33,3 +33,9 @@ def setting(section: str, key: str, default: Any) -> Any:
     if isinstance(yaml_section, dict):
         return yaml_section.get(key, default)
     return default
+
+
+def app_mode() -> str:
+    """Read the top-level application mode without changing the shared config loader."""
+    value = _yaml_config().get("mode", "local")
+    return value if isinstance(value, str) else "local"
