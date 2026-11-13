@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import importlib
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
+import pymupdf
 import pytest
 
 # Ensure repository root is on sys.path
@@ -36,19 +36,12 @@ from tests.ingestion.doubles import (  # noqa: E402
 REAL_FACTORY = "real_ingestion"
 
 
-def _real_ingestion() -> Ingestion:
-    """The real ingestion implementation, or a skip while it cannot be used."""
-    try:
-        module = importlib.import_module("src.ingestion")
-    except ImportError as exc:
-        pytest.skip(f"real ingestion dependencies unavailable ({type(exc).__name__})")
-    factory: Callable[[], Ingestion] | None = getattr(module, REAL_FACTORY, None)
-    if factory is None:
-        pytest.skip(f"{REAL_FACTORY}() does not exist yet")
-    try:
-        return factory()
-    except Exception as exc:
-        pytest.skip(f"real ingestion unusable ({type(exc).__name__})")
+def _create_test_pdf(path: Path, content: str = "المادة 1\nنص تجريبي للاختبار.") -> None:
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), content)
+    doc.save(str(path))
+    doc.close()
 
 
 class IngestionHarness:
@@ -80,7 +73,14 @@ def harness(request: pytest.FixtureRequest, tmp_path: Path) -> IngestionHarness:
     leak_index = RecordingLeakIndex()
 
     if request.param == "real":
-        real = _real_ingestion()
+        module = importlib.import_module("src.ingestion")
+        factory = getattr(module, REAL_FACTORY)
+        real = factory(
+            rights=rights,
+            retrieval=retrieval,
+            leak=leak_index,
+            cache_dir=cache_dir,
+        )
         return IngestionHarness(real, retrieval, rights, leak_index, cache_dir)
 
     fake = FakeIngestion(
@@ -99,7 +99,7 @@ def test_t10_ingest_status_lifecycle_and_roles(harness: IngestionHarness, tmp_pa
     """T10: Ingesting transitions extracting -> chunked -> indexed, then sets document roles."""
     doc_id = make_doc_id(b"test-scanned-pdf", None)
     dummy_file = tmp_path / "test_doc.pdf"
-    dummy_file.write_bytes(b"%PDF-1.4 test")
+    _create_test_pdf(dummy_file, "المادة 1\nتسري أحكام هذا القانون.")
 
     meta = DocumentMeta(
         title="وثيقة اختبارية",
@@ -142,7 +142,7 @@ def test_t12_chunks_have_empty_allowed_roles_when_indexed(
     """T12: Any document ingested must pass chunks with allowed_roles == [] to retrieval.index."""
     doc_id = make_doc_id(b"test-public-doc", None)
     dummy_file = tmp_path / "public_doc.pdf"
-    dummy_file.write_bytes(b"%PDF-1.4 public")
+    _create_test_pdf(dummy_file, "المادة 1\nوثيقة عامة.")
 
     meta = DocumentMeta(title="وثيقة عامة", source_file="public_doc.pdf")
     roles = ["lecteur", "editeur"]
@@ -171,7 +171,7 @@ def test_t13_private_upload_owner_id_assigned(harness: IngestionHarness, tmp_pat
     user_u = LECTEUR_ID
     doc_id = make_doc_id(b"test-private-upload", user_u)
     dummy_file = tmp_path / "private_upload.pdf"
-    dummy_file.write_bytes(b"%PDF-1.4 private")
+    _create_test_pdf(dummy_file, "المادة 1\nوثيقة خاصة بالمستخدم.")
 
     meta = DocumentMeta(title="وثيقة خاصة", source_file="private_upload.pdf")
     roles: list[str] = []
@@ -199,7 +199,7 @@ def test_t16_delete_idempotent_and_cleans_up(harness: IngestionHarness, tmp_path
     """T16: Deleting a document twice raises no error, calls P2 & P6 delete, and clears cache."""
     doc_id = make_doc_id(b"test-to-delete", None)
     dummy_file = tmp_path / "delete_doc.pdf"
-    dummy_file.write_bytes(b"%PDF-1.4 to delete")
+    _create_test_pdf(dummy_file, "المادة 1\nوثيقة سيتم حذفها.")
 
     # Seed an extraction cache file to verify cache cleanup (P1-32)
     cache_file = harness.cache_dir / f"{doc_id}.json"
