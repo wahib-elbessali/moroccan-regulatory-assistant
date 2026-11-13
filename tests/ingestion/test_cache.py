@@ -23,7 +23,7 @@ def test_save_and_load_cache(tmp_path: Path) -> None:
     # Verify JSON structure
     with open(saved_path, encoding="utf-8") as f:
         data = json.load(f)
-    assert data["version"] == 2
+    assert data["version"] == 3
     assert len(data["pages"]) == 2
     assert data["pages"][0]["page"] == 1
     assert data["pages"][0]["text"] == "Page 1 text"
@@ -61,6 +61,24 @@ def test_load_cache_incompatible_version_returns_none(tmp_path: Path) -> None:
     file_path.write_text(json.dumps({"version": 99, "pages": []}), encoding="utf-8")
 
     assert load_cache("old_doc", cache_dir=tmp_path) is None
+
+
+def test_load_cache_version_2_ignored(tmp_path: Path) -> None:
+    """Version 2 cache files are ignored and trigger re-extraction after CACHE_VERSION=3 bump."""
+    file_path = tmp_path / "v2_doc.json"
+    file_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "pages": [
+                    {"page": 1, "text": "Old version 2 text", "ocr": False, "confidence": None}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_cache("v2_doc", cache_dir=tmp_path) is None
 
 
 def test_delete_cache_idempotent(tmp_path: Path) -> None:
