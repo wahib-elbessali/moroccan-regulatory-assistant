@@ -383,6 +383,11 @@ def test_t11_low_supported_claim_ratio_returns_unknown(
 
     assert answer.status == AnswerStatus.UNKNOWN
     assert answer.confidence == 0.0
+    assert answer.text == (
+        "Je n'ai pas trouvé cette information dans les documents auxquels vous avez accès."
+    )
+    assert answer.citations == []
+    assert answer.language == "fr"
 
 
 def test_t12_web_only_answer_has_notice_and_confidence_cap(lecteur_ctx, install_llm) -> None:
@@ -405,7 +410,14 @@ def test_t12_web_only_answer_has_notice_and_confidence_cap(lecteur_ctx, install_
     assert answer.status == AnswerStatus.ANSWERED
     assert answer.text.startswith(WEB_ONLY["fr"] + "\n")
     assert all(citation.url and citation.doc_id is None for citation in answer.citations)
-    assert answer.confidence <= setting("answer", "web_confidence_cap", 0.5)
+    assert answer.confidence == setting("answer", "web_confidence_cap", 0.5)
+    assert all(
+        citation.article is None
+        and citation.page is None
+        and citation.source is None
+        and citation.date is None
+        for citation in answer.citations
+    )
 
 
 def test_t13_mixed_answer_uses_web_part_notice(sample_chunks, lecteur_ctx, install_llm) -> None:
@@ -477,6 +489,58 @@ def test_t15_corpus_citation_copies_chunk_metadata(sample_chunks, lecteur_ctx, i
     assert citation.date == "2025-03-12"
     assert citation.url is None
     assert citation.excerpt == source
+
+
+def test_phase4_normalized_excerpt_stores_original_source_sentence(
+    sample_chunks, lecteur_ctx, install_llm
+) -> None:
+    source = "تُحَدَّدُ الأُجْرَةُ في المادة ١٢."
+    judge_copy = "تحدد الأجرة في المادة 12"
+    install_llm(
+        [
+            "تحدد الأجرة في المادة 12 [1].",
+            _verdicts((1, True, 1, judge_copy)),
+        ]
+    )
+
+    answer = real_writer().write(
+        "ما الأجرة في المادة؟",
+        _passages(sample_chunks, source),
+        [],
+        lecteur_ctx,
+    )
+
+    assert answer.status == AnswerStatus.ANSWERED
+    assert judge_copy not in source
+    assert answer.citations[0].excerpt == source
+
+
+def test_phase4_answer_at_confidence_threshold_is_answered(
+    sample_chunks, lecteur_ctx, install_llm
+) -> None:
+    source = "La demande doit être déposée avant le 30 juin."
+    install_llm(
+        [
+            "A [1]. B [1]. C [1]. D [1]. E [1].",
+            _verdicts(
+                (1, True, 1, source),
+                (2, True, 1, source),
+                (3, False, None, None),
+                (4, False, None, None),
+                (5, False, None, None),
+            ),
+        ]
+    )
+
+    answer = real_writer().write(
+        "Quand déposer la demande ?",
+        _passages(sample_chunks, source),
+        [],
+        lecteur_ctx,
+    )
+
+    assert answer.status == AnswerStatus.ANSWERED
+    assert answer.confidence == 0.4
 
 
 def test_t16_verify_event_contains_only_counts_and_rejection_codes(
