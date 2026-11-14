@@ -29,16 +29,30 @@ services:
       ui: {condition: service_healthy}
 
   # ---------------------------------------------------------------- application (internal only)
-  api:  # PLACEHOLDER: P5 skeleton and the other parts' code
-    image: python:3.11-slim
-    working_dir: /tmp
-    command: ["python", "-m", "http.server", "8000"]
+  api:  # DEV PLACEHOLDER (P6): runs the project code, so `make seed` and the leak tests can exec
+    # into it, but still only serves an empty directory on :8000. Replaced by the real api (P5).
+    # The config it reads is derived from config.yaml with `leak_index: real` (CONFIG_PATH), so
+    # `seed` registers the corpus in web-search; config.yaml itself is not changed.
+    build:
+      context: .
+      dockerfile: services/api-dev/Dockerfile
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - >
+        mkdir -p /srv/empty &&
+        sed 's/^  leak_index: fake/  leak_index: real/' /app/config.yaml > /run/config.stack.yaml &&
+        grep -q '^  leak_index: real' /run/config.stack.yaml &&
+        exec python -m http.server 8000 --directory /srv/empty
     healthcheck:
       <<: *health
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/')"]
     networks: [internal]
     environment:
       MODE: ${MODE:-local}
+      CONFIG_PATH: /run/config.stack.yaml
+      PYTHONPATH: /app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
@@ -48,6 +62,7 @@ services:
       ALLOW_CLOUD_LLM: ${ALLOW_CLOUD_LLM:-false}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - ./src:/app/src:ro
       - ./data/raw:/app/data/raw:ro
       - uploads:/app/storage/uploads
       - extract_cache:/app/cache/extracted
