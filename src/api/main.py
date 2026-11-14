@@ -10,11 +10,10 @@ from fastapi.responses import JSONResponse
 from src.api.routes import admin, ask, auth, conversations, documents, search
 from src.core.contracts.errors import AppError
 from src.core.db.init_db import init_db
-from src.core.logging import request_id_ctx_var, setup_logging
+from src.core.logging import setup_logging
 from src.core.security import request_id_var
 
 setup_logging()
-
 
 logger = logging.getLogger("rag_api")
 
@@ -49,8 +48,7 @@ async def request_id_middleware(
 ) -> Response:
     """Set request_id before authentication and echo X-Request-ID in response (P5-02)."""
     rid = _parse_valid_uuid(request.headers.get("X-Request-ID")) or uuid4()
-    sec_token = request_id_var.set(rid)
-    log_token = request_id_ctx_var.set(rid)
+    token = request_id_var.set(rid)
     request.state.request_id = str(rid)
     start_time = time.perf_counter()
 
@@ -60,7 +58,6 @@ async def request_id_middleware(
         logger.info(
             "http_request",
             extra={
-                "event": "http_request",
                 "method": request.method,
                 "path": request.url.path,
                 "status_code": response.status_code,
@@ -70,8 +67,7 @@ async def request_id_middleware(
         response.headers["X-Request-ID"] = str(rid)
         return response
     finally:
-        request_id_ctx_var.reset(log_token)
-        request_id_var.reset(sec_token)
+        request_id_var.reset(token)
 
 
 @app.exception_handler(AppError)
@@ -89,7 +85,7 @@ async def handle_app_error(_request: Request, exc: AppError) -> JSONResponse:
 @app.exception_handler(Exception)
 async def handle_unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
     """Mask internal exceptions behind 500 {"code": "internal_error"} without details (P5-05)."""
-    logger.exception("unhandled_exception", extra={"event": "unhandled_exception"})
+    logger.exception("unhandled_exception")
     rid = request_id_var.get()
     headers = {"X-Request-ID": str(rid)} if rid else None
     return JSONResponse(
