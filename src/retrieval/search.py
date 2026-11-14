@@ -18,13 +18,16 @@ When a model is down the search degrades instead of failing (P2-19): no embeddin
 only, no re-ranker means the RRF order with the RRF scores. Qdrant has no fallback — the
 visibility filter cannot be checked without it — so its failures stay ``ServiceError`` (§7).
 
-Log lines and error messages never contain the query, chunk text or a document title (P2-29).
-Only the two fallback warnings are logged here; the one JSON line per search that P2-29 also asks
-for is day-5 work (``P2-C-fatima.md``).
+Every completed search logs one structured line (P2-29), plus a warning for each P2-19 fallback.
+No log line or error message here ever carries the query, chunk text or a document title: the
+search line is counts, timings and the request id, and nothing else.
 """
 
 import logging
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
+from time import perf_counter
 from typing import Protocol
 
 from qdrant_client import models as qdrant_models
@@ -52,6 +55,32 @@ DEFAULT_TOP_K_BM25 = 30  # retrieval.top_k_bm25
 DEFAULT_RRF_K = 60  # retrieval.rrf_k
 DEFAULT_TOP_K_FINAL = 10  # retrieval.top_k_final
 DEFAULT_RERANK_TOP_N = 20  # retrieval.rerank_top_n
+
+
+# The one structured line per search (P2-29). ``SEARCH_EVENT`` is the message and the ``event``
+# field, so the line can be found either way; the stage names are the keys of the timing bucket
+# ``search`` fills, suffixed with ``_ms`` in the record.
+SEARCH_EVENT = "search"
+STAGES = ("embed", "qdrant", "bm25", "rerank")
+
+
+@contextmanager
+def _timed(timings: dict[str, float], stage: str) -> Iterator[None]:
+    """Adds the block's wall time, in milliseconds, to ``timings[stage]``.
+
+    Accumulates rather than assigns, because one stage can be more than one call: ``qdrant``
+    covers both the vector search and the P2-14 re-check. The ``finally`` means a call that
+    raised is still counted — a fallback (P2-19) took that time too, and a timing of 0 for a
+    stage that in fact waited on a dead service would be a lie.
+
+    Uses ``perf_counter``: a monotonic clock, so a system clock adjustment cannot produce a
+    negative duration.
+    """
+    start = perf_counter()
+    try:
+        yield
+    finally:
+        timings[stage] += (perf_counter() - start) * 1000.0
 
 
 class ChunkStore(Protocol):
@@ -205,9 +234,14 @@ class Retrieval:
             ctx: The user's context. Required: it carries the visibility rule.
             top_k: How many passages to return; ``None`` means ``top_k_final``.
 
+        Every search that runs to the end logs one structured line of counts and timings
+        (P2-29); see ``_log_search``. A search found to be invalid never reaches the indexes
+        and logs nothing.
+
         Returns:
             At most ``top_k`` passages, ``rank`` 1, 2, 3…, by decreasing score. ``[]`` when
-            nothing visible matches — an empty result is not an error (P2-17).
+            nothing visible matches — an empty result is not an error (P2-17), and it is logged
+            like any other.
 
         Raises:
             InvalidInput: ``ctx`` is None, the query is empty after ``normalize_ar``, or ``top_k``
@@ -230,39 +264,110 @@ class Retrieval:
             raise InvalidInput("top_k out of range")
 
         flt = visibility_filter(ctx)
+        timings: dict[str, float] = dict.fromkeys(STAGES, 0.0)
+
         # P2-19: no embeddings means no vector half at all — Qdrant is not asked for a search it
         # has no vector for — and the search carries on with BM25 only.
-        vector = self._embed(query)
-        vector_hits = (
-            self.store.vector_search(vector, flt, self.top_k_vector) if vector is not None else []
-        )
-        bm25_ids = self.bm25.search(tokenize(normalized), ctx, self.top_k_bm25)
+        with _timed(timings, "embed"):
+            vector = self._embed(query)
+        vector_hits: list[Chunk] = []
+        if vector is not None:
+            with _timed(timings, "qdrant"):
+                vector_hits = self.store.vector_search(vector, flt, self.top_k_vector)
+        with _timed(timings, "bm25"):
+            bm25_ids = self.bm25.search(tokenize(normalized), ctx, self.top_k_bm25)
 
         # P2-14: BM25 lives in memory and can be a moment behind Qdrant. recheck() returns a dict
         # and does not keep order, so the surviving IDs are put back in BM25's ranking — their
         # position in that list is what RRF reads as their rank.
-        rechecked = self.store.recheck(bm25_ids, flt)
+        with _timed(timings, "qdrant"):
+            rechecked = self.store.recheck(bm25_ids, flt)
         bm25_ids = [chunk_id for chunk_id in bm25_ids if chunk_id in rechecked]
 
         # Both sources already carry the chunks, so the fused IDs need no further Qdrant call.
         by_id = {chunk.chunk_id: chunk for chunk in vector_hits} | rechecked
         fused = _rrf_scores([[chunk.chunk_id for chunk in vector_hits], bm25_ids], self.rrf_k)
         candidates = [by_id[chunk_id] for chunk_id in list(fused)[: self.rerank_top_n]]
-        if not candidates:
-            return []
 
-        scores = self._rerank(query, candidates)
-        if scores is None:
-            # P2-19: the re-ranker is down. The candidates are already in fused order, so keeping
-            # it needs no sort, and each one carries its own RRF score.
-            ranked = [(chunk, fused[chunk.chunk_id]) for chunk in candidates]
-        else:
-            # Stable sort: equal re-ranker scores keep the RRF order, the sensible tie-break.
-            ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: -pair[1])
-        return [
-            Passage(chunk=chunk, score=score, rank=rank)
-            for rank, (chunk, score) in enumerate(ranked[:limit], start=1)
-        ]
+        passages: list[Passage] = []
+        if candidates:
+            with _timed(timings, "rerank"):
+                scores = self._rerank(query, candidates)
+            if scores is None:
+                # P2-19: the re-ranker is down. The candidates are already in fused order, so
+                # keeping it needs no sort, and each one carries its own RRF score.
+                ranked = [(chunk, fused[chunk.chunk_id]) for chunk in candidates]
+            else:
+                # Stable sort: equal re-ranker scores keep the RRF order, a sensible tie-break.
+                ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: -pair[1])
+            passages = [
+                Passage(chunk=chunk, score=score, rank=rank)
+                for rank, (chunk, score) in enumerate(ranked[:limit], start=1)
+            ]
+
+        # P2-17: nothing visible matched is a normal, logged search, not an error and not a
+        # shortcut out of the function — the line below is what says the search found nothing.
+        self._log_search(
+            ctx,
+            qdrant_candidates=len(vector_hits),
+            bm25_candidates=len(bm25_ids),
+            returned=len(passages),
+            timings=timings,
+        )
+        return passages
+
+    def _log_search(
+        self,
+        ctx: UserContext,
+        *,
+        qdrant_candidates: int,
+        bm25_candidates: int,
+        returned: int,
+        timings: dict[str, float],
+    ) -> None:
+        """The one structured line per search (P2-29).
+
+        Emitted once, at the end of a search that ran: a search rejected by the input checks
+        (P2-11) never reached the indexes and has nothing to report, and one that raised
+        ``ServiceError`` has no result to describe. A search that found nothing **is** logged,
+        with ``returned = 0`` (P2-17).
+
+        What the counts mean:
+
+        * ``qdrant_candidates`` — chunks the vector search returned. The visibility filter is
+          inside the Qdrant query (P2-12), so every one of them is already visible to this user.
+          ``0`` when the embedding service was down and there was no vector half at all (P2-19).
+        * ``bm25_candidates`` — BM25 candidates **after** the P2-14 re-check, not before. BM25
+          filters before scoring (P2-13), but it works from an in-memory copy that can lag, so
+          the re-check against Qdrant is the authoritative one. Counting before it could put a
+          chunk the user may not see into the line, which T13 forbids.
+        * ``returned`` — passages handed back, at most ``top_k``.
+
+        The timings are the wall time of each stage in milliseconds. ``qdrant_ms`` covers both
+        Qdrant round trips — the vector search and the re-check — since P2-29 names Qdrant as one
+        stage. A stage that was skipped or never reached reads ``0.0``; a stage whose service
+        raised still reads the time spent waiting on it.
+
+        Nothing identifying the content goes in: no query, no chunk text, no title, no chunk or
+        document ids, no user id. Counts, milliseconds and the request id, which is P5's own
+        correlation handle and carries no content (P2-29, §7).
+
+        The fields travel as ``extra``, so each one is an attribute of the ``LogRecord`` and the
+        line stays machine-readable. P5's ``JSONFormatter`` currently copies only a fixed set of
+        fields into its JSON output, so these do not reach stdout as JSON yet; the fix belongs to
+        P5's ``src/core/logging.py``, which P2 does not edit.
+        """
+        logger.info(
+            SEARCH_EVENT,
+            extra={
+                "event": SEARCH_EVENT,
+                "request_id": str(ctx.request_id),
+                "qdrant_candidates": qdrant_candidates,
+                "bm25_candidates": bm25_candidates,
+                "returned": returned,
+                **{f"{stage}_ms": round(timings[stage], 3) for stage in STAGES},
+            },
+        )
 
     def _embed(self, query: str) -> list[float] | None:
         """The query's vector, embedded as typed (P2-08, P2-18).
