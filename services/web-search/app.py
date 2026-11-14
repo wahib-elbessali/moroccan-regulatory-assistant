@@ -17,7 +17,7 @@ import httpx
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from leak_filter import LeakFilter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 from store import SQLiteLeakStore
 
@@ -27,6 +27,11 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "/app/config.yaml"))
 DATABASE_PATH = Path(os.getenv("LEAK_DB_PATH", "/data/leak.sqlite3"))
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080")
+
+
+# HMAC fingerprints are 16 lowercase hex characters (src/core/leak/fingerprint.py).
+# Anything else is refused, so raw text can never end up in the index (P6-29).
+Fingerprint = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{16}$")]
 
 
 class SearchRequest(BaseModel):
@@ -51,8 +56,8 @@ class IndexRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     doc_id: str = Field(min_length=1, max_length=512)
-    grams: list[str] = Field(default_factory=list)
-    refs: list[str] = Field(default_factory=list)
+    grams: list[Fingerprint] = Field(default_factory=list)
+    refs: list[Fingerprint] = Field(default_factory=list)
 
 
 class BlockingRequest(BaseModel):

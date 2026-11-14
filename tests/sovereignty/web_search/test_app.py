@@ -277,7 +277,7 @@ def test_blocking_and_delete_require_token(api):
         "/index",
         json={
             "doc_id": "document-2",
-            "grams": ["fingerprint-123"],
+            "grams": ["0123456789abcdef"],
             "refs": [],
         },
         headers=auth(),
@@ -308,7 +308,7 @@ def test_blocking_and_delete_require_token(api):
     )
     assert blocked.status_code == 204
 
-    assert web_app.app.state.store.get("fingerprint-123") == [("document-2", False, "gram")]
+    assert web_app.app.state.store.get("0123456789abcdef") == [("document-2", False, "gram")]
 
     deleted = client.delete(
         "/index/document-2",
@@ -316,7 +316,7 @@ def test_blocking_and_delete_require_token(api):
     )
     assert deleted.status_code == 204
 
-    assert web_app.app.state.store.get("fingerprint-123") == []
+    assert web_app.app.state.store.get("0123456789abcdef") == []
 
 
 def test_search_filters_invalid_results_and_respects_limit(api, monkeypatch):
@@ -448,3 +448,33 @@ async def test_rejects_egress_network_with_valid_token(api):
 
     assert exc.value.status_code == 403
     assert exc.value.detail == {"code": "forbidden_network"}
+
+
+VALID_FINGERPRINT = "0123456789abcdef"
+
+
+@pytest.mark.parametrize("field", ["grams", "refs"])
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        "المادة الأولى من القانون",  # raw Arabic text
+        "0123456789abcde",  # too short
+        "0123456789abcdef0",  # too long
+        "0123456789ABCDEF",  # uppercase hex
+        "ref: 0123456789abcdef",  # not a bare fingerprint
+    ],
+)
+def test_index_refuses_anything_but_hex_fingerprints(api, field, bad_value):
+    client, _, _ = api
+
+    payload = {"doc_id": "document-3", "grams": [], "refs": []}
+    payload[field] = [VALID_FINGERPRINT, bad_value]
+
+    response = client.post("/index", json=payload, headers=auth())
+
+    assert response.status_code == 422
+
+    # Nothing is stored, not even the valid fingerprint sent in the same request.
+    store = web_app.app.state.store
+    assert store.get(bad_value) == []
+    assert store.get(VALID_FINGERPRINT) == []
