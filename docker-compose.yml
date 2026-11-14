@@ -111,21 +111,23 @@ services:
     networks: [internal]
 
   # ---------------------------------------------------------------- the only way out (egress)
-  web-search:  # PLACEHOLDER: leak filter + leak index + proxy to searxng (day 4)
-    image: python:3.11-slim
-    working_dir: /tmp
-    command: ["python", "-m", "http.server", "8090"]
+  web-search:
+    build:
+      context: .
+      dockerfile: services/web-search/Dockerfile
     healthcheck:
       <<: *health
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8090/')"]
+      test: ["CMD", "python", "-c", "import os,urllib.request as u; r=u.Request('http://127.0.0.1:8090/health',headers={'Authorization':'Bearer '+os.environ['LEAK_API_TOKEN']}); u.urlopen(r)"]
     networks: [internal, egress]
     environment:
       LEAK_HMAC_KEY: ${LEAK_HMAC_KEY}
       LEAK_API_TOKEN: ${LEAK_API_TOKEN}
+      INTERNAL_NETWORK_CIDR: 172.22.0.0/16
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - leak_data:/data
-
+    depends_on:
+      searxng: {condition: service_healthy}
   searxng:
     image: searxng/searxng:latest
     environment:
@@ -148,6 +150,9 @@ networks:
   internal:
     driver: bridge
     internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
   front:
     driver: bridge
     driver_opts:

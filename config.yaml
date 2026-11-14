@@ -57,7 +57,7 @@ web:
   max_results: 5
   max_query_words: 12
   max_snippet_chars: 500
-  timeout_s: 5
+  timeout_s: 15
 leak:
   ngram: 4
   overlap_threshold: 0.2      # starting value, tuned on the leak tests
