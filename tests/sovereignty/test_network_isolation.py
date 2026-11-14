@@ -29,17 +29,6 @@ USES_PYTHON = {"api", "ocr", "searxng", "web-search"}
 # What a genuinely blocked connection looks like (not a missing command).
 NETWORK_ERROR = re.compile(r"unreachable|timed out|timeout", re.IGNORECASE)
 
-# Known gap, fixed by the nginx proxy PR: on Docker Desktop (Windows),
-# `enable_ip_masquerade: "false"` does not cut egress on `front`.
-XFAIL_FRONT = pytest.mark.xfail(
-    raises=AssertionError,
-    strict=False,
-    reason=(
-        "api and ui are on `front`, which still has internet on Docker "
-        "Desktop. Fixed by moving them to `internal` behind an nginx proxy."
-    ),
-)
-
 
 def _running_services() -> set[str]:
     if shutil.which("docker") is None:
@@ -97,12 +86,10 @@ def test_control_egress_services_reach_internet(service):
     assert "connected" in out, f"{service} cannot reach the internet:\n{out}"
 
 
-@XFAIL_FRONT
 def test_t1_api_cannot_reach_internet_directly():
     _assert_blocked("api")
 
 
-@XFAIL_FRONT
 def test_t1_api_cannot_fetch_example_com():
     code, out = _exec(
         "api",
@@ -139,7 +126,7 @@ def test_t2_web_search_reaches_searxng():
         "ocr",
         "postgres",
         "qdrant",
-        pytest.param("ui", marks=XFAIL_FRONT),
+        "ui",
     ],
 )
 def test_t3_internal_services_cannot_reach_internet(service):
