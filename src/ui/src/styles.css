@@ -1,0 +1,45 @@
+@import "@fontsource/dm-sans/400.css";
+@import "@fontsource/dm-sans/500.css";
+@import "@fontsource/dm-sans/600.css";
+@import "@fontsource/dm-sans/700.css";
+@import "@fontsource/noto-naskh-arabic/400.css";
+@import "@fontsource/noto-naskh-arabic/500.css";
+@import "@fontsource/noto-naskh-arabic/600.css";
+@import "tailwindcss";
+
+:root {
+  font-family: "DM Sans", "Noto Naskh Arabic", sans-serif;
+  color: #242a24;
+  background: #f6f5f0;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  --paper: #f6f5f0;
+  --ink: #242a24;
+  --muted: #777b70;
+  --line: #e3e3da;
+  --green: #245c48;
+  --green-dark: #193e33;
+  --orange: #c56e3d;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+::selection { color: #fff; background: #245c48; }
+[dir="rtl"] .arabic, [lang="ar"] { font-family: "Noto Naskh Arabic", serif; }
+.app-shell { animation: arrive .4s ease both; }
+.fade-in { animation: fade-in .25s ease both; }
+.rise-in { animation: rise-in .35s ease both; }
+@keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: #c8c9bf transparent; }
+.focus-ring:focus-visible { outline: 3px solid #d88c5d; outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; scroll-behavior: auto !important; }
+}
