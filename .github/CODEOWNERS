@@ -1,89 +1,89 @@
 # Who must approve a change. The last matching line wins, so specific paths come after general ones.
 # Any one person listed on a line can approve; a PR author can never approve their own PR.
-# Coordination (@wahib-elbessali, @BasmaBD1111, @Missesqueensy) is on every line, so any PR can
+# Coordination (@wahib-elbessali, @Basma-el-boudali, @Missesqueensy) is on every line, so any PR can
 # be approved even when a group member is away. Members not listed yet are added when their
 # username is known.
 
 # ---------- Default: coordination ----------
-*                                         @wahib-elbessali @BasmaBD1111 @Missesqueensy
+*                                         @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- P5 Identity and access ----------
-/src/api/                                 @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/db/                             @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/security.py                     @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/audit.py                        @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/config.py                       @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/logging.py                      @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/tests/access/                            @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/tests/e2e/                               @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/tests/conftest.py                        @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/docs/specs/P5-identity-access.md         @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
+/src/api/                                 @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/db/                             @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/security.py                     @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/audit.py                        @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/config.py                       @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/logging.py                      @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/tests/access/                            @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/tests/e2e/                               @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/tests/conftest.py                        @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/docs/specs/P5-identity-access.md         @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
 
 # ---------- P1 Ingestion ----------
-/src/ingestion/                           @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/ingestion/                         @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/fixtures/                          @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/data/                                    @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/specs/P1-ingestion.md               @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/ingestion/                           @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/ingestion/                         @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/fixtures/                          @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/data/                                    @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/specs/P1-ingestion.md               @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- P2 Retrieval ----------
-/src/retrieval/                           @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
-/src/api/routes/search.py                 @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
-/tests/retrieval/                         @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
-/docs/specs/P2-retrieval.md               @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
+/src/retrieval/                           @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
+/src/api/routes/search.py                 @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
+/tests/retrieval/                         @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
+/docs/specs/P2-retrieval.md               @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
 
 # ---------- P3 Orchestration ----------
-/src/agents/orchestrator/                 @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/api/routes/ask.py                    @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/agents/orchestrator/               @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/specs/P3-orchestration.md           @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/agents/orchestrator/                 @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/api/routes/ask.py                    @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/agents/orchestrator/               @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/specs/P3-orchestration.md           @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- P4 Answer ----------
-/src/agents/answer/                       @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/agents/answer/                     @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/specs/P4-answer.md                  @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/agents/answer/                       @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/agents/answer/                     @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/specs/P4-answer.md                  @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- P6 Sovereignty ----------
-/src/core/llm/                            @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/leak/                           @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/agents/web/                          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/services/                                @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docker-compose.yml                       @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/Makefile                                 @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/sovereignty/                       @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/hardware.md                         @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/specs/P6-sovereignty.md             @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/core/llm/                            @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/leak/                           @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/agents/web/                          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/services/                                @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docker-compose.yml                       @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/Makefile                                 @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/sovereignty/                       @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/hardware.md                         @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/specs/P6-sovereignty.md             @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- P7 Interface ----------
-/src/ui/                                  @RABAB-ENNACIRI @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/ui/                                @RABAB-ENNACIRI @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/demo.md                             @RABAB-ENNACIRI @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/specs/P7-interface.md               @RABAB-ENNACIRI @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/ui/                                  @RABAB-ENNACIRI @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/ui/                                @RABAB-ENNACIRI @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/demo.md                             @RABAB-ENNACIRI @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/specs/P7-interface.md               @RABAB-ENNACIRI @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- Shared contracts: coordination only, except each part's own fake and contract test ----------
-/src/core/contracts/                      @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/registry.py           @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/contracts/fakes/ingestion.py    @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/fakes/retrieval.py    @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
-/src/core/contracts/fakes/orchestrator.py @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/fakes/answer.py       @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/fakes/rights.py       @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/contracts/fakes/audit.py        @Missesqueensy @nassimadoghmi @wahib-elbessali @BasmaBD1111
-/src/core/contracts/fakes/llm.py          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/fakes/leak.py         @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/src/core/contracts/fakes/web.py          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/contracts/test_ingestion.py        @aguelloulmouad-hub @aymen0121 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/contracts/test_retrieval.py        @wahib-elbessali @BasmaBD1111 @Missesqueensy @Fatima-Zahra21
-/tests/contracts/test_orchestrator.py     @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/contracts/test_writer.py           @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/tests/contracts/test_narrator.py         @Oumaima036 @MiloudiAhmed @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/src/core/contracts/                      @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/registry.py           @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/contracts/fakes/ingestion.py    @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/fakes/retrieval.py    @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
+/src/core/contracts/fakes/orchestrator.py @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/fakes/answer.py       @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/fakes/rights.py       @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/contracts/fakes/audit.py        @Missesqueensy @nassimadoghmi @wahib-elbessali @Basma-el-boudali
+/src/core/contracts/fakes/llm.py          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/fakes/leak.py         @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/src/core/contracts/fakes/web.py          @AlaeMZ @Angeraiyane @BabacarFaye3203 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/contracts/test_ingestion.py        @aguelloulmouad-hub @aymen0121 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/contracts/test_retrieval.py        @wahib-elbessali @Basma-el-boudali @Missesqueensy @Fatima-Zahra21
+/tests/contracts/test_orchestrator.py     @agouzoulmeryem7-dot @fatimaezzahra-max @ibtissamaitbouzian6 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/contracts/test_writer.py           @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/tests/contracts/test_narrator.py         @Oumaima036 @MiloudiAhmed @wahib-elbessali @Basma-el-boudali @Missesqueensy
 
 # ---------- Project-wide files: coordination only ----------
-/docs/specs/00-shared.md                  @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/architecture.md                     @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/docs/schedule.md                         @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/config.yaml                              @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/pyproject.toml                           @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/.pre-commit-config.yaml                  @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/scripts/                                 @wahib-elbessali @BasmaBD1111 @Missesqueensy
-/.github/                                 @wahib-elbessali @BasmaBD1111 @Missesqueensy
+/docs/specs/00-shared.md                  @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/architecture.md                     @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/docs/schedule.md                         @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/config.yaml                              @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/pyproject.toml                           @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/.pre-commit-config.yaml                  @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/scripts/                                 @wahib-elbessali @Basma-el-boudali @Missesqueensy
+/.github/                                 @wahib-elbessali @Basma-el-boudali @Missesqueensy

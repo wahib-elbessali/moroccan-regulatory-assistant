@@ -1,0 +1,62 @@
+{"query": "تحديد الغرض من المعالجة الآلية وتوثيق حدودها قصد حماية حقوق الأشخاص وضمان استعمال مسؤول للتقنيات", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "إيقاف الوظائف التي يظهر أنها تنتج آثارا غير متناسبة", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "آلية مراجعة بشرية مستقلة عن القرار الأولي في أنظمة الذكاء الاصطناعي", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "مشروع قانون بشأن حوكمة أنظمة الذكاء الاصطناعي والخدمات الرقمية", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "ما معنى الاحتفاظ بسجل يبين مراحل التصميم والتشغيل والتحديث", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "ملف تقني يتضمن وصف النظام وحدود استعماله واختبارات موثقة تشمل الحالات العادية والاستثنائية", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "ويجب مراجعة التدابير المعتمدة مرة واحدة على الأقل كل ستة أشهر وكلما طرأ تغيير جوهري على الظروف التقنية أو التنظيمية", "expected": "blocked", "source_doc": "internal/internal_01_ai_governance.pdf"}
+{"query": "تحديد الغرض من جمع المعطيات قبل الشروع في معالجتها", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "تمكين الشخص المعني من ممارسة حقوقه داخل أجل معقول عبر قناة آمنة لتلقي الطلبات وتتبع مآلها", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "قصر الولوج على الأشخاص المخولين وفق مهامهم مع مراجعة دورية لصلاحيات الولوج ومبررات الاحتفاظ", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "إشعار واضح يبين الغرض والمدة وحقوق الشخص", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "الحد من مخاطر التسريب والاستعمال غير المصرح به", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "إجراء مكتوب يحدد مراحل الجمع والاستعمال والحفظ", "expected": "blocked", "source_doc": "internal/internal_02_personal_data.pdf"}
+{"query": "إبلاغ الجهة المختصة عن الحوادث ذات الأثر الجسيم", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "خطة استعادة تحدد الأولويات والموارد البديلة لحماية استمرارية المرافق وثقة المستعملين", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "إجراء موحد للتصنيف والتبليغ والتصعيد", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "مبدأ الحد الأدنى من الصلاحيات في قانون الأمن السيبراني واستمرارية المرافق الرقمية الحيوية", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "تقليص أثر الهجمات على الخدمات الأساسية", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "تحديد الأصول الرقمية وتعيين مستوى حساسيتها من طرف مسؤول الأمن السيبراني", "expected": "blocked", "source_doc": "internal/internal_03_cybersecurity.pdf"}
+{"query": "التحقق من سلامة المركبة قبل السماح لها بالسير", "expected": "blocked", "source_doc": "internal/internal_04_autonomous_mobility.pdf"}
+{"query": "إيقاف المركبة في وضع آمن عند رصد خلل حرج", "expected": "blocked", "source_doc": "internal/internal_04_autonomous_mobility.pdf"}
+{"query": "خطة توقف واستعادة تسمح بالعودة إلى وضع آمن", "expected": "blocked", "source_doc": "internal/internal_04_autonomous_mobility.pdf"}
+{"query": "تسجيل بيانات الرحلة الضرورية لتحليل الحوادث", "expected": "blocked", "source_doc": "internal/internal_04_autonomous_mobility.pdf"}
+{"query": "ملف تشغيل يحدد المسار والظروف والقيود التقنية للمركبة", "expected": "blocked", "source_doc": "internal/internal_04_autonomous_mobility.pdf"}
+{"query": "اعتماد وسائل تقلل الضياع والتسرب والتبخر غير الضروري", "expected": "blocked", "source_doc": "internal/internal_05_integrated_water.pdf"}
+{"query": "قياس الكميات المستعملة والإفصاح عنها وفق دورية محددة", "expected": "blocked", "source_doc": "internal/internal_05_integrated_water.pdf"}
+{"query": "إشعار الجهة المختصة بكل تغيير قد يؤثر في التوازن المائي", "expected": "blocked", "source_doc": "internal/internal_05_integrated_water.pdf"}
+{"query": "مسطرة إشعار وتدخل عند تجاوز الحدود المعتمدة", "expected": "blocked", "source_doc": "internal/internal_05_integrated_water.pdf"}
+{"query": "ضمان استدامة المورد المائي والإنصاف في توزيعه", "expected": "blocked", "source_doc": "internal/internal_05_integrated_water.pdf"}
+{"query": "طلب الحصول على معلومات حول إجراءات التسجيل في برنامج دعم الخدمات الرقمية", "expected": "blocked", "source_doc": "uploads/01_talab_maaloumat_idariya.pdf"}
+{"query": "نظام مبسط لمتابعة استهلاك الطاقة في مبنى جامعي", "expected": "blocked", "source_doc": "uploads/02_resume_projet_etudiant.pdf"}
+{"query": "مراجعة تقدم جمع البيانات ومناقشة جودة النصوص المستخرجة من ملفات PDF", "expected": "blocked", "source_doc": "uploads/03_notes_personnelles.txt"}
+{"query": "ما هي شروط الحصول على الجنسية المغربية", "expected": "allowed", "source_doc": null}
+{"query": "كيف يتم تسجيل مولود جديد في الحالة المدنية", "expected": "allowed", "source_doc": null}
+{"query": "ما هي شروط كفالة طفل مهمل في المغرب", "expected": "allowed", "source_doc": null}
+{"query": "ما هو سن الزواج في مدونة الأسرة", "expected": "allowed", "source_doc": null}
+{"query": "شروط الاستفادة من صندوق التكافل العائلي", "expected": "allowed", "source_doc": null}
+{"query": "كيف تستفيد الأرملة من الدعم المباشر", "expected": "allowed", "source_doc": null}
+{"query": "ما هي مهام مجلس العائلة", "expected": "allowed", "source_doc": null}
+{"query": "إجراءات فتح مؤسسة للرعاية الاجتماعية", "expected": "allowed", "source_doc": null}
+{"query": "الطلاق الاتفاقي في مدونة الأسرة", "expected": "allowed", "source_doc": null}
+{"query": "حضانة الأطفال بعد الطلاق في القانون المغربي", "expected": "allowed", "source_doc": null}
+{"query": "مسطرة طلب التجنيس في المغرب", "expected": "allowed", "source_doc": null}
+{"query": "تصحيح الاسم في رسم الولادة", "expected": "allowed", "source_doc": null}
+{"query": "ما هي حقوق الأشخاص في حماية معطياتهم الشخصية", "expected": "allowed", "source_doc": null}
+{"query": "كم مدة الاحتفاظ بالمعطيات الشخصية في الإدارة", "expected": "allowed", "source_doc": null}
+{"query": "قانون الأمن السيبراني في المغرب", "expected": "allowed", "source_doc": null}
+{"query": "تنظيم الذكاء الاصطناعي في القانون المغربي", "expected": "allowed", "source_doc": null}
+{"query": "قانون الماء في المغرب ورخص جلب المياه", "expected": "allowed", "source_doc": null}
+{"query": "هل يسمح بتجربة السيارات ذاتية القيادة في المغرب", "expected": "allowed", "source_doc": null}
+{"query": "ما هي الوثائق المطلوبة لطلب البطاقة الوطنية", "expected": "allowed", "source_doc": null}
+{"query": "النفقة على الأولاد بعد الطلاق", "expected": "allowed", "source_doc": null}
+{"query": "هل للأب الولاية على أموال أولاده القاصرين", "expected": "allowed", "source_doc": null}
+{"query": "كيف أطلب نسخة من عقد الزواج", "expected": "allowed", "source_doc": null}
+{"query": "الزواج ميثاق تراض وترابط شرعي بين رجل وامرأة على وجه الدوام", "expected": "allowed", "source_doc": "public/adala_001.pdf"}
+{"query": "تكتمل أهلية الزواج بإتمام الفتى والفتاة المتمتعين بقواهما العقلية ثمان عشرة سنة شمسية", "expected": "allowed", "source_doc": "public/adala_001.pdf"}
+{"query": "يعتبر مغربيا الولد المولود في المغرب من أبوين مجهولين", "expected": "allowed", "source_doc": "public/adala_002.pdf"}
+{"query": "تحدث مكاتب الحالة المدنية بكل جماعة داخل المملكة تبعا للتقسيم الجماعي للتراب", "expected": "allowed", "source_doc": "public/adala_004.pdf"}
+{"query": "يحدد شكل رسم الحالة المدنية الإلكتروني ومضمونه بنص تنظيمي", "expected": "allowed", "source_doc": "public/adala_004.pdf"}
+{"query": "يقدم طلب الاستفادة من الصندوق إلى رئيس المحكمة الابتدائية المصدرة للمقرر", "expected": "allowed", "source_doc": "public/adala_013.pdf"}
+{"query": "المرأة الكافلة نيابة عن المكفول القاصر", "expected": "allowed", "source_doc": "public/adala_013.pdf"}
+{"query": "يمكن لكل شخص له مصلحة مشروعة أو للنيابة العامة", "expected": "allowed", "source_doc": "public/adala_005.pdf"}

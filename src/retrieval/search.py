@@ -14,11 +14,16 @@ The visibility rule (00-shared §6.3) is applied **inside** both indexes, before
 module never filters results afterwards. The query is embedded as typed and given to BM25
 normalized and tokenized (P2-18).
 
-Error messages never contain the query, chunk text or a document title (P2-29). The one JSON log
-line per search that P2-29 also asks for is day-5 work (``P2-C-fatima.md``), so this module logs
-nothing yet.
+When a model is down the search degrades instead of failing (P2-19): no embeddings means BM25
+only, no re-ranker means the RRF order with the RRF scores. Qdrant has no fallback — the
+visibility filter cannot be checked without it — so its failures stay ``ServiceError`` (§7).
+
+Log lines and error messages never contain the query, chunk text or a document title (P2-29).
+Only the two fallback warnings are logged here; the one JSON line per search that P2-29 also asks
+for is day-5 work (``P2-C-fatima.md``).
 """
 
+import logging
 from collections import defaultdict
 from typing import Protocol
 
@@ -37,9 +42,11 @@ from src.ingestion import normalize_ar
 from .store import visibility_filter
 from .tokenizer import tokenize
 
-# Defaults mirror config.yaml; the project has no config loader yet (``src/core/config.py`` is
-# P5's and is not merged), so the caller passes the values it wants. ``real_retrieval()`` will
-# read them from ``cfg.retrieval`` without any change to the logic below.
+logger = logging.getLogger(__name__)
+
+# Defaults mirror config.yaml, for callers that build a ``Retrieval`` directly (tests, scripts).
+# ``real_retrieval()`` reads the values from ``cfg.retrieval`` and passes them in, so this module
+# never imports the configuration itself.
 DEFAULT_TOP_K_VECTOR = 30  # retrieval.top_k_vector
 DEFAULT_TOP_K_BM25 = 30  # retrieval.top_k_bm25
 DEFAULT_RRF_K = 60  # retrieval.rrf_k
@@ -80,6 +87,27 @@ class Bm25Searcher(Protocol):
     def search(self, tokens: list[str], ctx: UserContext, limit: int) -> list[str]: ...
 
 
+def _rrf_scores(lists: list[list[str]], k: int) -> dict[str, float]:
+    """The fused chunk IDs with their RRF scores, best first (P2-15).
+
+    Does the whole of the fusion; ``rrf`` is the view of it that keeps only the order. The scores
+    are needed when the re-ranker is down, since they then become ``Passage.score`` (P2-19).
+
+    Args:
+        lists: Ranked lists of chunk IDs, best first.
+        k: The RRF constant (``retrieval.rrf_k``).
+
+    Returns:
+        ``{chunk_id: score}``, inserted by decreasing score, so iterating it gives the ranking.
+        Dicts keep insertion order, so this mapping and ``rrf`` can never disagree.
+    """
+    scores: defaultdict[str, float] = defaultdict(float)
+    for ranked in lists:
+        for rank, chunk_id in enumerate(ranked, start=1):
+            scores[chunk_id] += 1.0 / (k + rank)
+    return {chunk_id: scores[chunk_id] for chunk_id in sorted(scores, key=lambda c: -scores[c])}
+
+
 def rrf(lists: list[list[str]], k: int) -> list[str]:
     """Fuses ranked lists of chunk IDs with Reciprocal Rank Fusion (P2-15).
 
@@ -104,11 +132,7 @@ def rrf(lists: list[list[str]], k: int) -> list[str]:
     Returns:
         Every distinct chunk ID, by decreasing fused score. ``[]`` if every list is empty.
     """
-    scores: defaultdict[str, float] = defaultdict(float)
-    for ranked in lists:
-        for rank, chunk_id in enumerate(ranked, start=1):
-            scores[chunk_id] += 1.0 / (k + rank)
-    return sorted(scores, key=lambda chunk_id: -scores[chunk_id])
+    return list(_rrf_scores(lists, k))
 
 
 class Retrieval:
@@ -168,9 +192,12 @@ class Retrieval:
     # --- Search (§3.3, §6.2) ------------------------------------------------------------------
 
     def search(self, query: str, ctx: UserContext, top_k: int | None = None) -> list[Passage]:
-        """The best passages this user is allowed to see, best first (P2-11…P2-18).
+        """The best passages this user is allowed to see, best first (P2-11…P2-19).
 
-        ``score`` is the re-ranker's score, so it is only comparable within one call.
+        ``score`` is the re-ranker's score, so it is only comparable within one call. When the
+        re-ranker is down it is the RRF score instead (P2-19), which is a much smaller number —
+        around 0.03 for a chunk ranked top of both lists, since it is a sum of ``1 / (60 + rank)``
+        terms. The two kinds of score are never comparable with each other, only within one call.
 
         Args:
             query: The question as typed. It is embedded unchanged (P2-18) and normalized and
@@ -186,8 +213,12 @@ class Retrieval:
             InvalidInput: ``ctx`` is None, the query is empty after ``normalize_ar``, or ``top_k``
                 is outside ``1 … rerank_top_n`` (``top_k=0`` included: only ``None`` is a
                 default).
-            ServiceError: Qdrant is unreachable, or a model call failed or answered oddly. The
-                filter cannot be checked without Qdrant, so there is no fallback (§7).
+            ServiceError: Qdrant is unreachable — the visibility filter cannot be checked without
+                it, so there is no fallback (§7) and an empty result is never substituted. Also
+                when a model answered but made no sense (no vector, the wrong number of scores):
+                that is a broken answer, not an unavailable service, and pairing scores with the
+                wrong chunks would be worse than failing. A model that is simply **down** raises
+                nothing here: it is handled by the fallbacks of P2-19.
         """
         if ctx is None:
             raise InvalidInput("user context required")
@@ -199,7 +230,12 @@ class Retrieval:
             raise InvalidInput("top_k out of range")
 
         flt = visibility_filter(ctx)
-        vector_hits = self.store.vector_search(self._embed(query), flt, self.top_k_vector)
+        # P2-19: no embeddings means no vector half at all — Qdrant is not asked for a search it
+        # has no vector for — and the search carries on with BM25 only.
+        vector = self._embed(query)
+        vector_hits = (
+            self.store.vector_search(vector, flt, self.top_k_vector) if vector is not None else []
+        )
         bm25_ids = self.bm25.search(tokenize(normalized), ctx, self.top_k_bm25)
 
         # P2-14: BM25 lives in memory and can be a moment behind Qdrant. recheck() returns a dict
@@ -210,41 +246,75 @@ class Retrieval:
 
         # Both sources already carry the chunks, so the fused IDs need no further Qdrant call.
         by_id = {chunk.chunk_id: chunk for chunk in vector_hits} | rechecked
-        fused = rrf([[chunk.chunk_id for chunk in vector_hits], bm25_ids], self.rrf_k)
-        candidates = [by_id[chunk_id] for chunk_id in fused[: self.rerank_top_n]]
+        fused = _rrf_scores([[chunk.chunk_id for chunk in vector_hits], bm25_ids], self.rrf_k)
+        candidates = [by_id[chunk_id] for chunk_id in list(fused)[: self.rerank_top_n]]
         if not candidates:
             return []
 
         scores = self._rerank(query, candidates)
-        # Stable sort: equal re-ranker scores keep the RRF order, which is the sensible fallback.
-        ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: -pair[1])
+        if scores is None:
+            # P2-19: the re-ranker is down. The candidates are already in fused order, so keeping
+            # it needs no sort, and each one carries its own RRF score.
+            ranked = [(chunk, fused[chunk.chunk_id]) for chunk in candidates]
+        else:
+            # Stable sort: equal re-ranker scores keep the RRF order, the sensible tie-break.
+            ranked = sorted(zip(candidates, scores, strict=True), key=lambda pair: -pair[1])
         return [
             Passage(chunk=chunk, score=score, rank=rank)
             for rank, (chunk, score) in enumerate(ranked[:limit], start=1)
         ]
 
-    def _embed(self, query: str) -> list[float]:
+    def _embed(self, query: str) -> list[float] | None:
         """The query's vector, embedded as typed (P2-08, P2-18).
 
+        The ``try`` covers the model call and nothing else: a service that answers with a wrong
+        number of vectors is not a service that is down, and that answer must still fail (§7).
+
+        Returns:
+            The vector, or ``None`` when the embedding service is unavailable, which tells the
+            caller to run on BM25 alone (P2-19).
+
         Raises:
-            ServiceError: The models client failed or returned no vector.
+            ServiceError: The service answered, but with a number of vectors other than one.
         """
-        vectors = self.models.embed([query])  # P6; raises ServiceError
+        try:
+            vectors = self.models.embed([query])  # P6
+        except ServiceError:
+            # No query text in the warning (P2-29); the exception itself is not logged either,
+            # since P6 is free to put the request in its message.
+            logger.warning(
+                "embeddings unavailable, falling back to BM25 only", extra={"stage": "embed"}
+            )
+            return None
         if len(vectors) != 1:
             raise ServiceError("embedding service returned an unexpected number of vectors")
         return vectors[0]
 
-    def _rerank(self, query: str, candidates: list[Chunk]) -> list[float]:
+    def _rerank(self, query: str, candidates: list[Chunk]) -> list[float] | None:
         """Re-ranker scores for the candidates, in the same order (P2-16).
 
         The bare ``text`` of each chunk is sent, not its embedding text: the re-ranker reads the
         question and the passage together, and the headings would only add noise.
 
+        As in ``_embed``, the ``try`` covers the model call alone: a wrong number of scores is a
+        broken answer, not an unavailable service, and it must still fail (§7).
+
+        Returns:
+            One score per candidate, in the candidates' order, or ``None`` when the re-ranking
+            service is unavailable, which tells the caller to keep the RRF order (P2-19).
+
         Raises:
-            ServiceError: The models client failed, or returned a different number of scores
-                than there were candidates, which would pair scores with the wrong chunks.
+            ServiceError: The service answered with a different number of scores than there were
+                candidates, which would pair scores with the wrong chunks.
         """
-        scores = self.models.rerank(query, [chunk.text for chunk in candidates])  # P6
+        try:
+            scores = self.models.rerank(query, [chunk.text for chunk in candidates])  # P6
+        except ServiceError:
+            # No query or chunk text in the warning (P2-29).
+            logger.warning(
+                "re-ranker unavailable, keeping the RRF order", extra={"stage": "rerank"}
+            )
+            return None
         if len(scores) != len(candidates):
             raise ServiceError("re-ranking service returned an unexpected number of scores")
         return [float(score) for score in scores]

@@ -1,9 +1,9 @@
-"""Tests of src/retrieval/search.py (P2 spec §8: T12, T16, T20, and the P2-14 re-check).
+"""Tests of src/retrieval/search.py (P2 spec §8: T12, T15, T16, T20, T21, and the P2-14 re-check).
 
-Day 3 runs the pipeline against the merged Qdrant store on an in-memory Qdrant (as
-``P2-C-fatima.md`` prescribes) with the deterministic ``HashModels`` of ``p2_helpers``, and a
-small BM25 double so the keyword list can be set exactly. Basma's ``BM25Index`` is merged and is
-checked here for signature compatibility, but wiring it in is day-4 work.
+The pipeline runs against the merged Qdrant store on an in-memory Qdrant (as ``P2-C-fatima.md``
+prescribes) with the deterministic ``HashModels`` of ``p2_helpers``, and usually a small BM25
+double so the keyword list can be set exactly. T15 is the exception: it wires Basma's real
+``BM25Index`` to Wahib's real ``QdrantStore``, because staleness is a property of the real pair.
 
 ``StubStore`` and ``RecordingModels`` exist for the steps whose ordering must be observed exactly
 (the re-check keeps no order, so the restored BM25 ranking cannot be asserted through a real
@@ -30,9 +30,10 @@ from src.core.contracts import (
 )
 from src.ingestion import normalize_ar
 from src.retrieval.bm25 import BM25Index
-from src.retrieval.search import Bm25Searcher, ChunkStore, Retrieval, rrf
+from src.retrieval.search import Bm25Searcher, ChunkStore, Retrieval, _rrf_scores, rrf
 from src.retrieval.store import QdrantStore
 from src.retrieval.tokenizer import tokenize
+from src.retrieval.version import read_version
 
 # The re-ranker in p2_helpers scores raw word overlap between the query and each chunk's text,
 # so the texts below are built from the query's own words: the expected order is then exact.
@@ -161,6 +162,41 @@ class BrokenModels(RecordingModels):
         return [1.0] * (len(texts) + 1)
 
 
+class NoReranker(RecordingModels):
+    """P2-19: the re-ranking service is down. ``embed`` still works."""
+
+    def rerank(self, query: str, texts: list[str]) -> list[float]:
+        self.rerank_calls.append((query, list(texts)))
+        raise ServiceError("re-ranking service unavailable")
+
+
+class NoEmbeddings(RecordingModels):
+    """P2-19: the embedding service is down. ``rerank`` still works."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.embed_calls.append(list(texts))
+        raise ServiceError("embedding service unavailable")
+
+
+class NoModels(NoEmbeddings):
+    """P2-19: both model services are down."""
+
+    def rerank(self, query: str, texts: list[str]) -> list[float]:
+        raise ServiceError("re-ranking service unavailable")
+
+
+class CountingStore(StubStore):
+    """``StubStore`` that counts ``vector_search`` calls, so "never called" can be asserted."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.vector_calls = 0
+
+    def vector_search(self, vector: list[float], flt: Any, limit: int) -> list[Chunk]:
+        self.vector_calls += 1
+        return super().vector_search(vector, flt, limit)
+
+
 # --- Fixtures ---------------------------------------------------------------------------------
 
 
@@ -248,6 +284,34 @@ def test_rrf_with_a_single_list_keeps_its_order() -> None:
 
 def test_larger_k_still_prefers_agreement_between_lists() -> None:
     assert rrf([["a", "b", "c"], ["c", "a"]], 1000) == ["a", "c", "b"]
+
+
+# --- The scored view of the same fusion (P2-19 needs the numbers) -----------------------------
+
+
+def test_rrf_scores_are_the_sums_the_formula_gives() -> None:
+    """The helper exposes what ``rrf`` throws away: the fused score of each chunk."""
+    assert _rrf_scores([["a", "b", "c"], ["c", "a"]], 60) == {
+        "a": 1 / 61 + 1 / 62,
+        "c": 1 / 63 + 1 / 61,
+        "b": 1 / 62,
+    }
+
+
+def test_rrf_scores_are_ordered_best_first_and_agree_with_rrf() -> None:
+    """``rrf`` is a view of the helper, so the two can never disagree on the ranking."""
+    for lists in ([["a", "b", "c"], ["c", "a"]], [["a", "b"], ["c", "d"]], [], [[], []]):
+        scores = _rrf_scores(lists, 60)
+        assert list(scores) == rrf(lists, 60)
+        assert list(scores.values()) == sorted(scores.values(), reverse=True)
+
+
+def test_rrf_fallback_scores_are_small_numbers_around_a_hundredth() -> None:
+    """P2-19 documents the scale: a chunk at the top of both lists scores about 0.03, nothing
+    like a re-ranker score. The two are never comparable with each other."""
+    best = _rrf_scores([["a", "b"], ["a", "c"]], 60)["a"]
+    assert best == pytest.approx(2 / 61, abs=1e-9)
+    assert 0.02 < best < 0.04
 
 
 # --- T12: input validation (P2-11) ------------------------------------------------------------
@@ -649,7 +713,8 @@ def test_impossible_configuration_is_refused(kwargs: dict[str, int]) -> None:
 
 
 def test_defaults_match_config_yaml() -> None:
-    """The defaults stand in for cfg.retrieval until P5's config loader lands."""
+    """The defaults mirror config.yaml's ``retrieval:`` values, for callers that build a
+    ``Retrieval`` directly; ``real_retrieval()`` passes ``cfg.retrieval`` in instead."""
     retrieval = Retrieval(StubStore(), StubBm25(), models=RecordingModels())
     assert (retrieval.top_k_vector, retrieval.top_k_bm25, retrieval.rrf_k) == (30, 30, 60)
     assert (retrieval.top_k_final, retrieval.rerank_top_n) == (10, 20)
@@ -680,9 +745,11 @@ def test_logs_hold_no_query_or_chunk_text(
 ) -> None:
     """P2-29: no query, chunk text or title in any log line a search produces.
 
-    ``search.py`` logs nothing yet — the one JSON line per search is day-5 work — so today this
-    only covers what the store logs underneath (doc ids and counts). It is kept as the guard
-    that day 5's log line has to keep passing, and as T22's starting point.
+    On a search where every service answers, ``search.py`` itself logs nothing — the one JSON
+    line per search is day-5 work — so this covers what the store logs underneath (doc ids and
+    counts). ``test_fallback_warnings_hold_no_query_or_chunk_text`` covers the P2-19 warnings.
+    It is kept as the guard that day 5's log line has to keep passing, and as T22's starting
+    point.
     """
     shown(store, make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
     with caplog.at_level("DEBUG"):
@@ -690,3 +757,183 @@ def test_logs_hold_no_query_or_chunk_text(
     blob = "\n".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
     for secret in (QUERY, *GRADED_TEXTS, "عنوان public"):
         assert secret not in blob
+
+
+# --- T21: fallbacks when a model is down (P2-19) ----------------------------------------------
+
+
+def test_t21_reranker_down_keeps_the_rrf_order_with_rrf_scores(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """T21: a re-ranker raising ServiceError leaves the fused order, scored by RRF, and warns.
+
+    The two lists are deliberately in conflict — BM25 offers the last two chunks of the vector
+    list, best-last — so the fused order is neither list's own order. A fallback that simply
+    returned the vector hits, or BM25's, would therefore fail here.
+    """
+    chunks = make_doc("public", texts=[f"{QUERY} رقم {i}" for i in range(4)], roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    bm25_ids = [ids[3], ids[2]]
+    store = StubStore(vector_hits=chunks)
+    models = NoReranker()
+
+    with caplog.at_level("WARNING"):
+        passages = Retrieval(store, StubBm25(bm25_ids), models=models).search(
+            QUERY, make_ctx("lecteur"), 4
+        )
+
+    expected = _rrf_scores([ids, bm25_ids], 60)
+    assert [p.chunk.chunk_id for p in passages] == list(expected)
+    assert [p.chunk.chunk_id for p in passages] != ids  # the fusion really did reorder
+    assert [p.score for p in passages] == pytest.approx(list(expected.values()))
+    assert [p.rank for p in passages] == [1, 2, 3, 4]
+    assert [p.score for p in passages] == sorted((p.score for p in passages), reverse=True)
+    assert all(p.score < 0.04 for p in passages)  # RRF scores are hundredths, not reranker scores
+
+    assert models.rerank_calls  # the re-ranker was tried before falling back
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "re-ranker unavailable" in warnings[0].getMessage()
+
+
+def test_t21_embeddings_down_fall_back_to_bm25_only(caplog: pytest.LogCaptureFixture) -> None:
+    """T21: an embedding service raising ServiceError leaves BM25 to answer alone, and warns.
+
+    Qdrant is never asked for a vector search — there is no vector to ask it with — but the BM25
+    re-check still runs, so the visibility rule is enforced exactly as usual (P2-14).
+    """
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = CountingStore(known=chunks, visible=set(ids))
+    models = NoEmbeddings()
+
+    with caplog.at_level("WARNING"):
+        passages = Retrieval(store, StubBm25(ids), models=models).search(
+            QUERY, make_ctx("lecteur"), 4
+        )
+
+    assert store.vector_calls == 0  # no vector, so no vector search
+    assert store.recheck_ids == ids  # the BM25 half ran, re-check included
+    assert [p.chunk.chunk_id for p in passages] == ids  # the re-ranker ordered what BM25 found
+    assert [p.rank for p in passages] == [1, 2, 3, 4]
+    assert models.embed_calls == [[QUERY]]  # the embedding was tried before falling back
+
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "embeddings unavailable" in warnings[0].getMessage()
+
+
+def test_both_models_down_still_answers_from_bm25_in_rrf_order(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The two fallbacks are independent, so losing both services is still not an error."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = CountingStore(known=chunks, visible=set(ids))
+
+    with caplog.at_level("WARNING"):
+        passages = Retrieval(store, StubBm25(ids), models=NoModels()).search(
+            QUERY, make_ctx("lecteur"), 4
+        )
+
+    assert [p.chunk.chunk_id for p in passages] == ids  # BM25's order, which RRF keeps
+    assert [p.score for p in passages] == pytest.approx(list(_rrf_scores([[], ids], 60).values()))
+    assert store.vector_calls == 0
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 2
+
+
+def test_qdrant_down_is_still_a_service_error_not_an_empty_result(
+    lecteur_ctx: UserContext,
+) -> None:
+    """P2-19 is about models only: a Qdrant failure is still a ServiceError (§7), never an empty
+    result, because the visibility filter cannot be checked without Qdrant."""
+
+    class DeadQdrant(StubStore):
+        def vector_search(self, vector: list[float], flt: Any, limit: int) -> list[Chunk]:
+            raise ServiceError("qdrant unavailable (vector_search)")
+
+    with pytest.raises(ServiceError):
+        Retrieval(DeadQdrant(), StubBm25(), models=RecordingModels()).search(QUERY, lecteur_ctx)
+
+
+def test_fallback_warnings_hold_no_query_or_chunk_text(caplog: pytest.LogCaptureFixture) -> None:
+    """P2-29 applies to the fallback warnings too, which run on the user's own query."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = CountingStore(known=chunks, visible=set(ids))
+
+    with caplog.at_level("DEBUG"):
+        Retrieval(store, StubBm25(ids), models=NoModels()).search(QUERY, make_ctx("lecteur"), 4)
+
+    blob = "\n".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+    for secret in (QUERY, *GRADED_TEXTS, "عنوان public"):
+        assert secret not in blob
+
+
+def test_an_unavailable_model_is_not_confused_with_a_broken_answer(store: QdrantStore) -> None:
+    """The fallbacks catch ServiceError around the model call only. A service that answers with
+    nonsense — no vector, the wrong number of scores — must still raise (§7), since quietly
+    degrading there would pair scores with the wrong chunks or hide a real defect."""
+
+    class NoVectors(RecordingModels):
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            return []
+
+    with pytest.raises(ServiceError):
+        Retrieval(store, StubBm25(), models=NoVectors()).search(QUERY, make_ctx("lecteur"))
+
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    with pytest.raises(ServiceError):
+        Retrieval(StubStore(vector_hits=chunks), StubBm25(), models=BrokenModels()).search(
+            QUERY, make_ctx("lecteur"), 3
+        )
+
+
+# --- T15: a stale BM25 index cannot leak a hidden chunk (P2-14, with Basma) -------------------
+
+# T15 runs the real BM25, whose scores are real BM25 scores: a word shared by most of a tiny
+# corpus gets a negative IDF and scores nothing, so QUERY itself would match no chunk at all.
+# This query is one word that only the target document carries, which gives it the only positive
+# score and makes "BM25 still offers the hidden chunk" an exact assertion.
+STALE_QUERY = "ترخيص"
+STALE_TEXT = "ترخيص استغلال"
+
+
+def test_t15_stale_bm25_still_cannot_return_a_hidden_chunk(
+    store: QdrantStore, lecteur_ctx: UserContext, tmp_path: Path
+) -> None:
+    """T15: hiding a document without bumping the version file leaves BM25 a step behind; the
+    Qdrant re-check (P2-14) is what keeps the hidden chunk out of the results.
+
+    Both real halves are used here — Wahib's ``QdrantStore`` and Basma's ``BM25Index`` — on an
+    in-memory Qdrant. The store keeps its default no-op ``on_write``, which is exactly the
+    staleness the spec asks to create: in production ``real_retrieval()`` passes ``bump_version``
+    instead, and BM25 would rebuild. The filler document stays visible throughout, so this
+    asserts that the *target* is gone, not that the search went empty — an empty result would
+    pass even if the re-check had never run.
+    """
+    version_file = tmp_path / "retrieval.version"
+    bm25 = BM25Index(store.scroll_payloads, version_file)
+    retrieval = Retrieval(store, bm25, models=HashModels())
+    tokens = tokenize(normalize_ar(STALE_QUERY))
+
+    target = shown(store, make_doc("stale-target", texts=[STALE_TEXT], roles=PUBLIC_ROLES))
+    filler = shown(store, make_doc("stale-filler", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    target_id = target[0].chunk_id
+
+    # The first search builds the BM25 snapshot while the target is visible.
+    before = retrieval.search(STALE_QUERY, lecteur_ctx, 20)
+    assert target_id in {p.chunk.chunk_id for p in before}
+    assert bm25.search(tokens, lecteur_ctx, 30) == [target_id]  # the keyword half found it
+    version_before = read_version(version_file)
+    assert version_before is not None
+
+    # Hidden straight through the store, whose on_write does nothing: BM25 is never told.
+    store.hide(target[0].doc_id)
+    assert read_version(version_file) == version_before  # the index really is stale
+    assert bm25.search(tokens, lecteur_ctx, 30) == [target_id]  # still offering a hidden chunk
+
+    after = retrieval.search(STALE_QUERY, lecteur_ctx, 20)
+    returned = {p.chunk.chunk_id for p in after}
+    assert target_id not in returned  # P2-14: the re-check dropped it
+    assert returned & {c.chunk_id for c in filler}  # the rest of the corpus still answers

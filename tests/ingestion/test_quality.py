@@ -8,6 +8,7 @@ from src.ingestion.quality import (
     PRESENTATION_FORMS,
     passes_quality_check,
     share_in_ranges,
+    share_of_impossible_patterns,
     share_of_reversed_words,
 )
 
@@ -72,3 +73,17 @@ def test_share_of_reversed_words_empty_or_normal() -> None:
     assert share_of_reversed_words("") == 0.0
     normal = "المادة 1 تسري أحكام هذا القانون على جميع المغاربة في كل مكان."
     assert share_of_reversed_words(normal) == 0.0
+
+
+def test_impossible_patterns_exceeding_five_percent_fails() -> None:
+    """Page with > 5% impossible Arabic ligature patterns fails quality check."""
+    clean_words = ["نص", "قانوني", "تنظيمي", "مغربي", "سليم", "يحدد", "شروط", "التطبيق"]
+    corrupted_words = ["املادة", "األولى", "هللا"]
+    # 3 corrupted out of 19 words ~ 15% > 5%
+    text = " ".join(clean_words * 2 + corrupted_words)
+    assert share_of_impossible_patterns(text) > 0.05
+    assert passes_quality_check(text, min_letters=20) is False
+
+    clean_text = "المادة الأولى من هذا القانون تنص على أحكام واضحة."
+    assert share_of_impossible_patterns(clean_text) == 0.0
+    assert passes_quality_check(clean_text, min_letters=20) is True
