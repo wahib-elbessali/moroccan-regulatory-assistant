@@ -1,6 +1,6 @@
 # P6 infrastructure. Spec: docs/specs/P6-sovereignty.md §3.1; architecture §5.
-# Networks: internal (no internet), front (host-reachable, no internet route), egress (internet).
-# Only web-search, searxng and cloud-gateway are ever attached to egress.
+# Networks: internal (no internet), front (reachable from the host; only gateway is on it),
+# egress (internet). Only web-search, searxng and cloud-gateway are ever attached to egress.
 # Services marked PLACEHOLDER only answer 200 on their port, so the stack starts before the
 # real code exists. Each one is replaced by its real image when its part is ready.
 name: moroccan-regulatory-assistant
@@ -12,7 +12,23 @@ x-health: &health
   start_period: 5s
 
 services:
-  # ---------------------------------------------------------------- application (front + internal)
+  # ---------------------------------------------------------------- the door from the host
+  gateway:  # nginx reverse proxy: the only service that publishes ports (config: services/gateway/)
+    image: nginx:1.27-alpine
+    healthcheck:
+      <<: *health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/_gateway/health"]
+    networks: [internal, front]
+    ports:
+      - "3000:3000"  # -> ui
+      - "8000:8000"  # -> api
+    volumes:
+      - ./services/gateway/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api: {condition: service_healthy}
+      ui: {condition: service_healthy}
+
+  # ---------------------------------------------------------------- application (internal only)
   api:  # PLACEHOLDER: P5 skeleton and the other parts' code
     image: python:3.11-slim
     working_dir: /tmp
@@ -20,9 +36,7 @@ services:
     healthcheck:
       <<: *health
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/')"]
-    networks: [internal, front]
-    ports:
-      - "8000:8000"
+    networks: [internal]
     environment:
       MODE: ${MODE:-local}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -52,9 +66,7 @@ services:
     healthcheck:
       <<: *health
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:3000/')"]
-    networks: [internal, front]
-    ports:
-      - "3000:3000"
+    networks: [internal]
     volumes:
       - ./config.yaml:/app/config.yaml:ro
 
@@ -154,6 +166,8 @@ networks:
       config:
         - subnet: 172.22.0.0/16
   front:
+    # Reachable from the host. On Linux, no masquerade means no route to the internet; on
+    # Docker Desktop it does not cut the internet, which is why api and ui stay off this network.
     driver: bridge
     driver_opts:
       com.docker.network.bridge.enable_ip_masquerade: "false"
