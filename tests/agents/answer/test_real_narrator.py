@@ -9,6 +9,7 @@ import pytest
 
 from src.agents.answer.narrator import LLMNarrator, TemplateNarrator, real_narrator
 from src.core.contracts import ProcessEvent, StepType
+from src.core.contracts.fakes.llm import FakeLLMClient
 
 
 def _collect(narrator, event: ProcessEvent, language: str) -> list[str]:
@@ -52,6 +53,47 @@ def test_t19_t20_web_skip_templates_are_fixed_for_both_narrators(
         assert _collect(narrator, event, "ar") == [expected_ar]
 
     assert unexpected_calls == []
+
+
+@pytest.mark.parametrize(
+    ("event", "expected_fr", "expected_ar"),
+    [
+        (
+            ProcessEvent(step=StepType.WEB, data={"status": "done", "count": 3}),
+            "Recherche web : 3 résultat(s).",
+            "البحث عبر الويب: 3 نتيجة.",
+        ),
+        (
+            ProcessEvent(step=StepType.VERIFY, data={"supported": 2, "total": 4}),
+            "4 affirmation(s) vérifiée(s) : 2 appuyée(s) par une source.",
+            "تم التحقق من 4 ادعاءً؛ 2 منها مدعوم بمصدر.",
+        ),
+    ],
+)
+def test_web_done_and_verify_templates_are_fixed_for_both_narrators(
+    event, expected_fr, expected_ar, monkeypatch
+) -> None:
+    llm_calls = []
+
+    def unexpected_llm():
+        llm_calls.append(True)
+        raise AssertionError("web and verify narration must not call the LLM")
+
+    monkeypatch.setattr("src.agents.answer.narrator.get_llm", unexpected_llm)
+    for narrator in (TemplateNarrator(), LLMNarrator()):
+        assert _collect(narrator, event, "fr") == [expected_fr]
+        assert _collect(narrator, event, "ar") == [expected_ar]
+
+    assert llm_calls == []
+
+
+def test_template_narrator_works_without_calling_fake_llm(monkeypatch) -> None:
+    fake_llm = FakeLLMClient(default_reply="Cette réponse ne doit pas être utilisée.")
+    monkeypatch.setattr("src.agents.answer.narrator.get_llm", lambda: fake_llm)
+    event = ProcessEvent(step=StepType.WRITE, data={})
+
+    assert _collect(TemplateNarrator(), event, "fr") == ["Je rédige la réponse."]
+    assert _collect(TemplateNarrator(), event, "ar") == ["أُعدّ الإجابة."]
 
 
 def test_t21_llm_narrator_falls_back_to_template_when_stream_raises(monkeypatch) -> None:
