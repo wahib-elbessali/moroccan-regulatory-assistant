@@ -211,6 +211,8 @@ def test_search_rejects_query_over_word_limit(api):
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_query"
     assert outgoing == []
+
+
 def test_index_endpoints_require_token(api):
     client, _, _ = api
 
@@ -222,10 +224,13 @@ def test_index_endpoints_require_token(api):
 
     assert client.post("/index", json=payload).status_code == 401
 
-    assert client.post(
-        "/blocking",
-        json={"doc_id": "document-1", "blocking": False},
-    ).status_code == 401
+    assert (
+        client.post(
+            "/blocking",
+            json={"doc_id": "document-1", "blocking": False},
+        ).status_code
+        == 401
+    )
 
     assert client.delete("/index/document-1").status_code == 401
 
@@ -265,7 +270,6 @@ def test_blocked_query_is_not_logged(api, caplog):
     assert '"status": "blocked"' in logs
 
 
-
 def test_blocking_and_delete_require_token(api):
     client, _, _ = api
 
@@ -281,14 +285,20 @@ def test_blocking_and_delete_require_token(api):
     assert indexed.status_code == 204
 
     # Unauthorized requests must be rejected.
-    assert client.post(
-        "/blocking",
-        json={"doc_id": "document-2", "blocking": False},
-    ).status_code == 401
+    assert (
+        client.post(
+            "/blocking",
+            json={"doc_id": "document-2", "blocking": False},
+        ).status_code
+        == 401
+    )
 
-    assert client.delete(
-        "/index/document-2",
-    ).status_code == 401
+    assert (
+        client.delete(
+            "/index/document-2",
+        ).status_code
+        == 401
+    )
 
     # Authorized requests must succeed.
     blocked = client.post(
@@ -298,9 +308,7 @@ def test_blocking_and_delete_require_token(api):
     )
     assert blocked.status_code == 204
 
-    assert web_app.app.state.store.get("fingerprint-123") == [
-        ("document-2", False, "gram")
-    ]
+    assert web_app.app.state.store.get("fingerprint-123") == [("document-2", False, "gram")]
 
     deleted = client.delete(
         "/index/document-2",
@@ -408,8 +416,6 @@ def test_search_logs_allowed_query(api, caplog):
     assert '"status": "ok"' in logs
 
 
-
-
 @pytest.mark.asyncio
 async def test_rejects_egress_network_with_valid_token(api):
     from fastapi import HTTPException
@@ -417,20 +423,22 @@ async def test_rejects_egress_network_with_valid_token(api):
 
     client, _, _ = api
 
-    request = Request({
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": "/health",
-        "raw_path": b"/health",
-        "query_string": b"",
-        "headers": [],
-        "client": ("172.23.0.10", 50000),
-        "server": ("web-search", 8090),
-        "app": web_app.app,
-    })
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/health",
+            "raw_path": b"/health",
+            "query_string": b"",
+            "headers": [],
+            "client": ("172.23.0.10", 50000),
+            "server": ("web-search", 8090),
+            "app": web_app.app,
+        }
+    )
 
     with pytest.raises(HTTPException) as exc:
         await web_app.require_token(

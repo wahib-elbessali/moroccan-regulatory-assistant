@@ -42,9 +42,7 @@ def test_lookup_skipped_when_global_web_disabled(monkeypatch, lecteur_ctx):
 
     monkeypatch.setattr(web, "get_llm", unexpected_call)
 
-    result = web.RealWebAgent().lookup(
-        "Question fiscale", enabled_context(lecteur_ctx), "fr"
-    )
+    result = web.RealWebAgent().lookup("Question fiscale", enabled_context(lecteur_ctx), "fr")
 
     assert result.status == "skipped"
     assert result.results == []
@@ -146,22 +144,16 @@ def test_lookup_skips_when_llm_returns_empty_query(monkeypatch, lecteur_ctx):
 
     monkeypatch.setattr(web, "get_web_search", unexpected_search)
 
-    result = web.RealWebAgent().lookup(
-        "Question fiscale", enabled_context(lecteur_ctx), "fr"
-    )
+    result = web.RealWebAgent().lookup("Question fiscale", enabled_context(lecteur_ctx), "fr")
 
     assert result.status == "skipped"
     assert result.results == []
 
 
-def test_lookup_audits_block_without_query_text(
-    monkeypatch, lecteur_ctx, fake_audit
-):
+def test_lookup_audits_block_without_query_text(monkeypatch, lecteur_ctx, fake_audit):
     monkeypatch.setattr(web.cfg.web, "enabled", True)
     monkeypatch.setattr(web, "get_llm", lambda: StubLLM("requête reformulée"))
-    monkeypatch.setattr(
-        web, "get_web_search", lambda: StubSearch(error=LeakBlocked(hits=4))
-    )
+    monkeypatch.setattr(web, "get_web_search", lambda: StubSearch(error=LeakBlocked(hits=4)))
 
     question = "Question confidentielle qui ne doit pas être journalisée"
     ctx = enabled_context(lecteur_ctx)
@@ -193,13 +185,9 @@ def test_lookup_audits_block_without_query_text(
 def test_lookup_skips_on_search_errors(monkeypatch, lecteur_ctx, error):
     monkeypatch.setattr(web.cfg.web, "enabled", True)
     monkeypatch.setattr(web, "get_llm", lambda: StubLLM("requête générale"))
-    monkeypatch.setattr(
-        web, "get_web_search", lambda: StubSearch(error=error)
-    )
+    monkeypatch.setattr(web, "get_web_search", lambda: StubSearch(error=error))
 
-    result = web.RealWebAgent().lookup(
-        "Question fiscale", enabled_context(lecteur_ctx), "fr"
-    )
+    result = web.RealWebAgent().lookup("Question fiscale", enabled_context(lecteur_ctx), "fr")
 
     assert result.status == "skipped"
     assert result.results == []
@@ -208,9 +196,7 @@ def test_lookup_skips_on_search_errors(monkeypatch, lecteur_ctx, error):
 def test_lookup_skips_if_block_audit_fails(monkeypatch, lecteur_ctx):
     monkeypatch.setattr(web.cfg.web, "enabled", True)
     monkeypatch.setattr(web, "get_llm", lambda: StubLLM("requête générale"))
-    monkeypatch.setattr(
-        web, "get_web_search", lambda: StubSearch(error=LeakBlocked(hits=2))
-    )
+    monkeypatch.setattr(web, "get_web_search", lambda: StubSearch(error=LeakBlocked(hits=2)))
 
     class BrokenAudit:
         def log_action(self, *args, **kwargs):
@@ -218,12 +204,11 @@ def test_lookup_skips_if_block_audit_fails(monkeypatch, lecteur_ctx):
 
     monkeypatch.setattr(web, "get_audit", lambda: BrokenAudit())
 
-    result = web.RealWebAgent().lookup(
-        "Question fiscale", enabled_context(lecteur_ctx), "fr"
-    )
+    result = web.RealWebAgent().lookup("Question fiscale", enabled_context(lecteur_ctx), "fr")
 
     assert result.status == "skipped"
     assert result.results == []
+
 
 def test_real_web_agent_factory():
     assert isinstance(web.real_web_agent(), web.RealWebAgent)

@@ -108,9 +108,7 @@ async def lifespan(app: FastAPI):
     try:
         internal_network = ipaddress.ip_network(internal_cidr, strict=True)
     except ValueError as exc:
-        raise RuntimeError(
-            "INTERNAL_NETWORK_CIDR must be a valid network CIDR"
-        ) from exc
+        raise RuntimeError("INTERNAL_NETWORK_CIDR must be a valid network CIDR") from exc
 
     config = read_config()
     leak_config = config.get("leak", {})
@@ -122,9 +120,7 @@ async def lifespan(app: FastAPI):
         ngram=int(leak_config.get("ngram", 4)),
         min_hits=int(leak_config.get("min_hits", 3)),
         max_df=int(leak_config.get("max_df", 20)),
-        overlap_threshold=float(
-            leak_config.get("overlap_threshold", 0.2)
-        ),
+        overlap_threshold=float(leak_config.get("overlap_threshold", 0.2)),
     )
 
     app.state.api_token = token
@@ -132,9 +128,7 @@ async def lifespan(app: FastAPI):
     app.state.store = store
     app.state.leak_filter = leak_filter
     app.state.http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(
-            float(config.get("web", {}).get("timeout_s", 5))
-        )
+        timeout=httpx.Timeout(float(config.get("web", {}).get("timeout_s", 5)))
     )
 
     try:
@@ -189,10 +183,7 @@ async def require_token(
             detail={"code": "forbidden_network"},
         ) from None
 
-    if not (
-        client_ip.is_loopback
-        or client_ip in request.app.state.internal_network
-    ):
+    if not (client_ip.is_loopback or client_ip in request.app.state.internal_network):
         raise HTTPException(
             status_code=403,
             detail={"code": "forbidden_network"},
@@ -250,9 +241,7 @@ async def search(
         web_config = config.get("web", {})
 
         if not web_config.get("enabled", False):
-            log_search(
-                body.request_id, "disabled", 0, started
-            )
+            log_search(body.request_id, "disabled", 0, started)
             return JSONResponse(
                 status_code=403,
                 content={"code": "web_disabled"},
@@ -269,9 +258,7 @@ async def search(
         blocked, hits = request.app.state.leak_filter.check(body.query)
 
         if blocked:
-            log_search(
-                body.request_id, "blocked", hits, started
-            )
+            log_search(body.request_id, "blocked", hits, started)
             return JSONResponse(
                 status_code=403,
                 content={"code": "leak_blocked", "hits": hits},
@@ -281,9 +268,7 @@ async def search(
             body.max_results,
             int(web_config.get("max_results", 5)),
         )
-        snippet_limit = int(
-            web_config.get("max_snippet_chars", 500)
-        )
+        snippet_limit = int(web_config.get("max_snippet_chars", 500))
 
         response = await request.app.state.http_client.get(
             f"{SEARXNG_URL}/search",

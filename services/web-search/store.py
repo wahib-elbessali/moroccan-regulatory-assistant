@@ -1,5 +1,4 @@
-﻿
-"""Persistent SQLite storage for web-search leak fingerprints."""
+﻿"""Persistent SQLite storage for web-search leak fingerprints."""
 
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ class SQLiteLeakStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         """Open a connection, manage its transaction and always close it."""
@@ -32,12 +30,9 @@ class SQLiteLeakStore:
         finally:
             connection.close()
 
-
-
     def _initialize(self) -> None:
         with self._connect() as connection:
-            connection.executescript(
-                """
+            connection.executescript("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id TEXT PRIMARY KEY,
                     blocking INTEGER NOT NULL DEFAULT 1
@@ -55,8 +50,7 @@ class SQLiteLeakStore:
 
                 CREATE INDEX IF NOT EXISTS idx_fingerprints_lookup
                     ON fingerprints(fingerprint);
-                """
-            )
+                """)
 
     def register(
         self,

@@ -19,6 +19,7 @@ def test_http_search_success_sends_token_and_payload():
         assert request.headers["Authorization"] == "Bearer test-token"
 
         import json
+
         payload = json.loads(request.content)
         assert payload["query"] == "droit fiscal"
         assert payload["max_results"] == 3
@@ -41,6 +42,7 @@ def test_http_search_success_sends_token_and_payload():
     service = HttpWebSearch(token="test-token", client=client)
 
     from uuid import UUID
+
     results = service.search(
         "droit fiscal",
         max_results=3,
@@ -133,9 +135,7 @@ def test_http_search_requires_token():
 def test_http_search_rejects_malformed_403_response(body):
     service = HttpWebSearch(
         token="test-token",
-        client=make_client(
-            lambda request: httpx.Response(403, json=body)
-        ),
+        client=make_client(lambda request: httpx.Response(403, json=body)),
     )
 
     with pytest.raises(ServiceError):

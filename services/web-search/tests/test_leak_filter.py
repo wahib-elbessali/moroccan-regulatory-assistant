@@ -113,6 +113,7 @@ def test_common_fingerprint_is_ignored(components) -> None:
 
     assert leak_filter.leak_hits(LEAKING_QUERY) == []
 
+
 def test_unknown_query_is_not_blocked(components) -> None:
     _, leak_filter = components
 
@@ -153,6 +154,7 @@ def test_min_hits_threshold_blocks_independently(components, monkeypatch) -> Non
     assert 3 / 17 < leak_filter.overlap_threshold
     assert blocked is True
 
+
 def test_overlap_threshold_blocks_independently(components, monkeypatch) -> None:
     store, leak_filter = components
     import leak_filter as leak_filter_module
@@ -176,6 +178,7 @@ def test_overlap_threshold_blocks_independently(components, monkeypatch) -> None
     assert hit_count < leak_filter.min_hits
     assert 2 / 7 >= leak_filter.overlap_threshold
     assert blocked is True
+
 
 def test_disabling_blocking_allows_previously_blocked_query(components) -> None:
     store, leak_filter = components

@@ -79,10 +79,7 @@ class LeakFilter:
             len(normalized_query.split()) - self.ngram + 1,
         )
 
-        return (
-            len(hits) >= self.min_hits
-            or len(hits) / n_grams >= self.overlap_threshold
-        )
+        return len(hits) >= self.min_hits or len(hits) / n_grams >= self.overlap_threshold
 
     def check(self, query: str) -> tuple[bool, int]:
         """Return (blocked, hit_count) without logging query content."""

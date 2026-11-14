@@ -164,9 +164,7 @@ class RealWebAgent:
             return WebLookup(status="skipped", results=[])
 
         truncated = [
-            result.model_copy(
-                update={"snippet": result.snippet[: cfg.web.max_snippet_chars]}
-            )
+            result.model_copy(update={"snippet": result.snippet[: cfg.web.max_snippet_chars]})
             for result in results[: cfg.web.max_results]
         ]
 
