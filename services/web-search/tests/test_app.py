@@ -1,15 +1,12 @@
 ﻿from __future__ import annotations
 
-import json
-
+import app as web_app
 import httpx
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-import app as web_app
 from src.core.leak.fingerprint import fingerprints
-
 
 TOKEN = "test-api-token"
 KEY = b"test-hmac-key"

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import logging
 import os
-import ipaddress
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,12 +16,10 @@ from uuid import UUID
 import httpx
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from leak_filter import LeakFilter
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse, Response
-
-from leak_filter import LeakFilter
 from store import SQLiteLeakStore
-
 
 logger = logging.getLogger("web_search")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -189,7 +187,7 @@ async def require_token(
         raise HTTPException(
             status_code=403,
             detail={"code": "forbidden_network"},
-        )
+        ) from None
 
     if not (
         client_ip.is_loopback

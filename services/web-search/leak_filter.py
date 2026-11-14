@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from store import SQLiteLeakStore
+
 from src.core.leak.fingerprint import fingerprints
 from src.ingestion.normalize import normalize_ar
-
-from store import SQLiteLeakStore
 
 
 class LeakFilter:

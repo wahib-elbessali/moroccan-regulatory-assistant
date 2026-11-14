@@ -1,4 +1,4 @@
-﻿"""Tests for the web-search leak filter."""
+"""Tests for the web-search leak filter."""
 
 import sys
 from pathlib import Path
@@ -8,8 +8,8 @@ import pytest
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
-from leak_filter import LeakFilter
-from store import SQLiteLeakStore
+from leak_filter import LeakFilter  # noqa: E402
+from store import SQLiteLeakStore  # noqa: E402
 
 KEY = b"test-leak-key"
 

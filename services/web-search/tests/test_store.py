@@ -1,4 +1,4 @@
-﻿"""Tests for the persistent SQLite leak store."""
+"""Tests for the persistent SQLite leak store."""
 
 import sys
 from pathlib import Path
@@ -8,7 +8,7 @@ import pytest
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
 
-from store import SQLiteLeakStore
+from store import SQLiteLeakStore  # noqa: E402
 
 
 @pytest.fixture
