@@ -110,6 +110,7 @@ def remove_headers_footers(pages: list[Page]) -> list[Page]:
             else _get_boundary_line_indices(lines)
         )
         kept_lines: list[str] = []
+        preserved_notice = False
 
         for idx, line in enumerate(lines):
             stripped = line.strip()
@@ -122,9 +123,11 @@ def remove_headers_footers(pages: list[Page]) -> list[Page]:
                 kept_lines.append(line)
                 continue
 
-            # Rule 4: Internal document notice preserved on page 1
+            # Rule 4: Internal document notice preserved on page 1 once
             if p.number == 1 and stripped == INTERNAL_DOC_NOTICE:
-                kept_lines.append(line)
+                if not preserved_notice:
+                    kept_lines.append(line)
+                    preserved_notice = True
                 continue
 
             # Rule 2: Number-only lines removed ONLY in boundary positions
