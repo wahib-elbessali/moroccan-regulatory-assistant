@@ -7,10 +7,14 @@ double so the keyword list can be set exactly. T15 is the exception: it wires Ba
 
 ``StubStore`` and ``RecordingModels`` exist for the steps whose ordering must be observed exactly
 (the re-check keeps no order, so the restored BM25 ranking cannot be asserted through a real
-Qdrant round trip).
+Qdrant round trip). The ``Slow*`` doubles exist only so each stage of the P2-29 line has a
+duration large enough to assert on.
 """
 
 import inspect
+import json
+import logging
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -30,7 +34,15 @@ from src.core.contracts import (
 )
 from src.ingestion import normalize_ar
 from src.retrieval.bm25 import BM25Index
-from src.retrieval.search import Bm25Searcher, ChunkStore, Retrieval, _rrf_scores, rrf
+from src.retrieval.search import (
+    SEARCH_EVENT,
+    STAGES,
+    Bm25Searcher,
+    ChunkStore,
+    Retrieval,
+    _rrf_scores,
+    rrf,
+)
 from src.retrieval.store import QdrantStore
 from src.retrieval.tokenizer import tokenize
 from src.retrieval.version import read_version
@@ -195,6 +207,45 @@ class CountingStore(StubStore):
     def vector_search(self, vector: list[float], flt: Any, limit: int) -> list[Chunk]:
         self.vector_calls += 1
         return super().vector_search(vector, flt, limit)
+
+
+# How long the ``Slow*`` doubles take. Comfortably above ``perf_counter``'s resolution on every
+# platform, so the stage timings of P2-29 can be asserted without a tolerance that would also
+# pass for a stage that was never measured at all.
+SLOW_S = 0.01
+SLOW_MS = SLOW_S * 1000
+
+
+class SlowModels(RecordingModels):
+    """Both model calls take a measurable amount of time."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        time.sleep(SLOW_S)
+        return super().embed(texts)
+
+    def rerank(self, query: str, texts: list[str]) -> list[float]:
+        time.sleep(SLOW_S)
+        return super().rerank(query, texts)
+
+
+class SlowStore(StubStore):
+    """Both Qdrant round trips take a measurable amount of time."""
+
+    def vector_search(self, vector: list[float], flt: Any, limit: int) -> list[Chunk]:
+        time.sleep(SLOW_S)
+        return super().vector_search(vector, flt, limit)
+
+    def recheck(self, chunk_ids: list[str], flt: Any) -> dict[str, Chunk]:
+        time.sleep(SLOW_S)
+        return super().recheck(chunk_ids, flt)
+
+
+class SlowBm25(StubBm25):
+    """A BM25 half that takes a measurable amount of time."""
+
+    def search(self, tokens: list[str], ctx: UserContext, limit: int) -> list[str]:
+        time.sleep(SLOW_S)
+        return super().search(tokens, ctx, limit)
 
 
 # --- Fixtures ---------------------------------------------------------------------------------
@@ -743,13 +794,13 @@ def test_real_qdrant_store_matches_the_chunk_store_protocol() -> None:
 def test_logs_hold_no_query_or_chunk_text(
     store: QdrantStore, lecteur_ctx: UserContext, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """P2-29: no query, chunk text or title in any log line a search produces.
+    """T22, P2-29: no query, chunk text or title in any log line a search produces.
 
-    On a search where every service answers, ``search.py`` itself logs nothing — the one JSON
-    line per search is day-5 work — so this covers what the store logs underneath (doc ids and
-    counts). ``test_fallback_warnings_hold_no_query_or_chunk_text`` covers the P2-19 warnings.
-    It is kept as the guard that day 5's log line has to keep passing, and as T22's starting
-    point.
+    The widest form of T22: every record emitted anywhere under a search — the P2-29 line of
+    this module, and whatever the store logs underneath — is swept for the secrets, attributes
+    included. ``test_t22_the_search_log_line_itself_holds_no_text`` narrows the same check to
+    the P2-29 line, and ``test_fallback_warnings_hold_no_query_or_chunk_text`` to the P2-19
+    warnings.
     """
     shown(store, make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
     with caplog.at_level("DEBUG"):
@@ -937,3 +988,334 @@ def test_t15_stale_bm25_still_cannot_return_a_hidden_chunk(
     returned = {p.chunk.chunk_id for p in after}
     assert target_id not in returned  # P2-14: the re-check dropped it
     assert returned & {c.chunk_id for c in filler}  # the rest of the corpus still answers
+
+
+# --- P2-29 and T22: the one structured line per search ----------------------------------------
+
+# Every field the line must carry (``P2-C-fatima.md``, spec §3.7). Written out here rather than
+# derived from the implementation, so dropping or renaming one fails this file.
+LOG_FIELDS = {
+    "event",
+    "request_id",
+    "qdrant_candidates",
+    "bm25_candidates",
+    "returned",
+    "embed_ms",
+    "qdrant_ms",
+    "bm25_ms",
+    "rerank_ms",
+}
+
+
+def search_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """The P2-29 records among everything captured, in order."""
+    return [r for r in caplog.records if getattr(r, "event", None) == SEARCH_EVENT]
+
+
+def fields(record: logging.LogRecord) -> dict[str, Any]:
+    """The P2-29 fields of a record, without logging's own attributes."""
+    return {k: v for k, v in record.__dict__.items() if k in LOG_FIELDS}
+
+
+@pytest.fixture
+def logged(caplog: pytest.LogCaptureFixture) -> pytest.LogCaptureFixture:
+    """``caplog`` capturing everything a search emits, this module's line included."""
+    caplog.set_level(logging.DEBUG)
+    return caplog
+
+
+def run_search(
+    *,
+    vector_hits: list[Chunk] | None = None,
+    bm25_ids: list[str] | None = None,
+    known: list[Chunk] | None = None,
+    visible: set[str] | None = None,
+    models: Any = None,
+    top_k: int = 10,
+    ctx: UserContext | None = None,
+) -> tuple[list[Passage], StubStore]:
+    """A search over stubs, so the two candidate lists are exactly what the test chose."""
+    store = StubStore(vector_hits=vector_hits, known=known, visible=visible)
+    retrieval = Retrieval(store, StubBm25(bm25_ids), models=models or RecordingModels())
+    return retrieval.search(QUERY, ctx or make_ctx("lecteur"), top_k), store
+
+
+def test_p2_29_one_line_is_logged_per_search(logged: pytest.LogCaptureFixture) -> None:
+    """One record per call, no more and no fewer: two searches leave exactly two."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    store = StubStore(vector_hits=chunks)
+    retrieval = Retrieval(store, StubBm25(), models=RecordingModels())
+
+    retrieval.search(QUERY, make_ctx("lecteur"), 3)
+    assert len(search_lines(logged)) == 1
+
+    retrieval.search(QUERY, make_ctx("lecteur"), 3)
+    assert len(search_lines(logged)) == 2
+
+
+def test_p2_29_the_line_carries_exactly_the_agreed_fields(
+    logged: pytest.LogCaptureFixture,
+) -> None:
+    """Every field P2-29 asks for is on the record, and the message identifies the event."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ctx = make_ctx("lecteur")
+    run_search(vector_hits=chunks, ctx=ctx, top_k=3)
+
+    (record,) = search_lines(logged)
+    assert record.getMessage() == SEARCH_EVENT
+    assert record.levelno == logging.INFO
+    assert set(fields(record)) == LOG_FIELDS
+    assert record.event == SEARCH_EVENT  # type: ignore[attr-defined]
+    assert record.request_id == str(ctx.request_id)  # type: ignore[attr-defined]
+
+
+def test_p2_29_the_line_is_logged_by_the_search_module(logged: pytest.LogCaptureFixture) -> None:
+    """It comes from ``src.retrieval.search``, not from a slice that does not own P2-29."""
+    run_search(vector_hits=make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    (record,) = search_lines(logged)
+    assert record.name == "src.retrieval.search"
+
+
+def test_p2_29_counts_are_the_two_lists_and_the_result(logged: pytest.LogCaptureFixture) -> None:
+    """``qdrant_candidates`` and ``bm25_candidates`` are the sizes of the two lists the fusion
+    was given, and ``returned`` the size of the answer."""
+    vector_chunks = make_doc("vector", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    bm25_chunks = make_doc("bm25", texts=GRADED_TEXTS[:2], roles=PUBLIC_ROLES)
+    bm25_ids = [c.chunk_id for c in bm25_chunks]
+
+    passages, _ = run_search(
+        vector_hits=vector_chunks, bm25_ids=bm25_ids, known=bm25_chunks, top_k=3
+    )
+
+    (record,) = search_lines(logged)
+    assert record.qdrant_candidates == len(vector_chunks) == 4  # type: ignore[attr-defined]
+    assert record.bm25_candidates == len(bm25_ids) == 2  # type: ignore[attr-defined]
+    assert record.returned == len(passages) == 3  # type: ignore[attr-defined]
+
+
+def test_p2_29_counts_are_plain_integers(logged: pytest.LogCaptureFixture) -> None:
+    """Counts, not lists of ids: a count cannot say which chunks took part."""
+    run_search(vector_hits=make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    (record,) = search_lines(logged)
+    for name in ("qdrant_candidates", "bm25_candidates", "returned"):
+        value = getattr(record, name)
+        assert isinstance(value, int) and not isinstance(value, bool), name
+        assert value >= 0, name
+
+
+def test_p2_29_bm25_count_is_taken_after_the_recheck(logged: pytest.LogCaptureFixture) -> None:
+    """P2-14 and T13: a BM25 candidate the re-check drops is not a visible candidate, so it must
+    not be counted. BM25 offers four ids here and only one survives."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+
+    passages, _ = run_search(bm25_ids=ids, known=chunks, visible={ids[0]}, top_k=3)
+
+    (record,) = search_lines(logged)
+    assert record.bm25_candidates == 1  # type: ignore[attr-defined]
+    assert record.bm25_candidates != len(ids)  # type: ignore[attr-defined]
+    assert [p.chunk.chunk_id for p in passages] == [ids[0]]
+
+
+def test_t13_a_restricted_chunk_is_not_counted_in_the_line(
+    store: QdrantStore, lecteur_ctx: UserContext, logged: pytest.LogCaptureFixture
+) -> None:
+    """T13, the half ``test_access.py`` leaves to this file: a chunk the user may not see, looked
+    up word for word, is absent from the result **and** from the counts of the log line.
+
+    Wahib's real store is behind the vector half, so the Qdrant count is the real filter's work
+    (P2-12). The BM25 half is stubbed with the restricted ids on purpose — a worst case BM25
+    cannot actually produce, since it filters before scoring (P2-13) — so the count is shown to
+    rest on the re-check (P2-14), not on BM25 having been honest.
+    """
+    internal = shown(store, make_doc("internal", texts=GRADED_TEXTS, roles=INTERNAL_ROLES))
+    ids = [c.chunk_id for c in internal]
+    retrieval = Retrieval(store, StubBm25(ids), models=HashModels())
+
+    passages = retrieval.search(internal[0].text, lecteur_ctx, 3)
+
+    assert passages == []
+    (record,) = search_lines(logged)
+    assert record.qdrant_candidates == 0  # type: ignore[attr-defined]
+    assert record.bm25_candidates == 0  # type: ignore[attr-defined]
+    assert record.returned == 0  # type: ignore[attr-defined]
+
+
+def test_p2_29_an_empty_search_is_still_logged_once(
+    store: QdrantStore, lecteur_ctx: UserContext, logged: pytest.LogCaptureFixture
+) -> None:
+    """P2-17: finding nothing is a normal search. It leaves one line, with zeros, not no line."""
+    passages = build(store).search(QUERY, lecteur_ctx, 3)
+
+    assert passages == []
+    (record,) = search_lines(logged)
+    assert record.returned == 0  # type: ignore[attr-defined]
+    assert record.qdrant_candidates == 0  # type: ignore[attr-defined]
+    assert record.bm25_candidates == 0  # type: ignore[attr-defined]
+    assert set(fields(record)) == LOG_FIELDS  # the timings are still there
+
+
+def test_p2_29_an_empty_search_reports_no_rerank_time(logged: pytest.LogCaptureFixture) -> None:
+    """With no candidates the re-ranker is never called, so its stage reads zero."""
+    models = SlowModels()
+    Retrieval(StubStore(), StubBm25(), models=models).search(QUERY, make_ctx("lecteur"), 3)
+
+    (record,) = search_lines(logged)
+    assert models.rerank_calls == []
+    assert record.rerank_ms == 0.0  # type: ignore[attr-defined]
+    assert record.embed_ms >= SLOW_MS / 2  # type: ignore[attr-defined]
+
+
+def test_p2_29_every_stage_is_timed(logged: pytest.LogCaptureFixture) -> None:
+    """Each of the four stages reports the time its own slow double spent."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = SlowStore(vector_hits=chunks)
+    Retrieval(store, SlowBm25(ids), models=SlowModels()).search(QUERY, make_ctx("lecteur"), 3)
+
+    (record,) = search_lines(logged)
+    for stage in STAGES:
+        assert getattr(record, f"{stage}_ms") >= SLOW_MS / 2, stage
+
+
+def test_p2_29_the_qdrant_stage_covers_both_round_trips(logged: pytest.LogCaptureFixture) -> None:
+    """P2-29 names Qdrant as one stage, and a search makes two calls to it: the vector search
+    and the P2-14 re-check. ``qdrant_ms`` is their sum, so neither is silently dropped."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = SlowStore(vector_hits=chunks, known=chunks)
+    Retrieval(store, StubBm25(ids), models=RecordingModels()).search(QUERY, make_ctx("lecteur"), 3)
+
+    (record,) = search_lines(logged)
+    assert store.recheck_ids == ids  # both round trips really happened
+    # Each round trip sleeps SLOW_MS, and ``time.sleep`` suspends for *at least* its argument,
+    # so two of them put a floor of 2 x SLOW_MS on this stage, while one alone lands just above
+    # 1 x SLOW_MS (measured: 21.7 ms against 10.4 ms). A threshold halfway between is the one
+    # that fails if either call is left out of the bucket, and it keeps a 5 ms margin on both
+    # sides: no upper bound is asserted, so a slow machine cannot make this flake.
+    assert record.qdrant_ms >= 1.5 * SLOW_MS  # type: ignore[attr-defined]
+
+
+def test_p2_29_timings_are_non_negative_numbers(logged: pytest.LogCaptureFixture) -> None:
+    run_search(vector_hits=make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    (record,) = search_lines(logged)
+    for stage in STAGES:
+        value = getattr(record, f"{stage}_ms")
+        assert isinstance(value, float), stage
+        assert value >= 0.0, stage
+
+
+def test_p2_29_a_skipped_vector_half_reports_no_candidates(
+    logged: pytest.LogCaptureFixture,
+) -> None:
+    """P2-19: with the embedding service down there is no vector list, so its count is 0 while
+    BM25 still answers. The line is logged all the same, next to the fallback warning."""
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    ids = [c.chunk_id for c in chunks]
+    store = CountingStore(known=chunks, visible=set(ids))
+
+    Retrieval(store, StubBm25(ids), models=NoEmbeddings()).search(QUERY, make_ctx("lecteur"), 4)
+
+    (record,) = search_lines(logged)
+    assert store.vector_calls == 0
+    assert record.qdrant_candidates == 0  # type: ignore[attr-defined]
+    assert record.bm25_candidates == len(ids)  # type: ignore[attr-defined]
+    assert record.returned == len(ids)  # type: ignore[attr-defined]
+
+
+def test_p2_29_a_failed_stage_is_still_timed(logged: pytest.LogCaptureFixture) -> None:
+    """P2-19: the time spent waiting on a service that then raised is real time, and is kept."""
+
+    class SlowDeadReranker(SlowModels):
+        def rerank(self, query: str, texts: list[str]) -> list[float]:
+            time.sleep(SLOW_S)
+            raise ServiceError("re-ranking service unavailable")
+
+    chunks = make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES)
+    passages, _ = run_search(vector_hits=chunks, models=SlowDeadReranker(), top_k=3)
+
+    (record,) = search_lines(logged)
+    assert passages  # the fallback answered
+    assert record.rerank_ms >= SLOW_MS / 2  # type: ignore[attr-defined]
+
+
+def test_p2_29_an_invalid_search_logs_no_line(
+    store: QdrantStore, lecteur_ctx: UserContext, logged: pytest.LogCaptureFixture
+) -> None:
+    """A search refused by the input checks (P2-11) never reached either index: one line per
+    *search*, and no search ran."""
+    retrieval = build(store)
+    for bad in (
+        lambda: retrieval.search(QUERY, None),  # type: ignore[arg-type]
+        lambda: retrieval.search("   ", lecteur_ctx),
+        lambda: retrieval.search(QUERY, lecteur_ctx, 0),
+        lambda: retrieval.search(QUERY, lecteur_ctx, 999),
+    ):
+        with pytest.raises(InvalidInput):
+            bad()
+    assert search_lines(logged) == []
+
+
+def test_p2_29_a_search_that_raised_logs_no_line(logged: pytest.LogCaptureFixture) -> None:
+    """A ``ServiceError`` leaves no result to describe, so no line claims one."""
+
+    class DeadQdrant(StubStore):
+        def vector_search(self, vector: list[float], flt: Any, limit: int) -> list[Chunk]:
+            raise ServiceError("qdrant unreachable")
+
+    with pytest.raises(ServiceError):
+        Retrieval(DeadQdrant(), StubBm25(), models=RecordingModels()).search(
+            QUERY, make_ctx("lecteur")
+        )
+    assert search_lines(logged) == []
+
+
+# --- T22, on the line itself ------------------------------------------------------------------
+
+
+def test_t22_the_search_log_line_itself_holds_no_text(
+    store: QdrantStore, lecteur_ctx: UserContext, logged: pytest.LogCaptureFixture
+) -> None:
+    """T22, P2-29: the line carries counts, timings and the request id. Not the query, not a
+    chunk's text, not a title, and not an id that would name the chunks or the user."""
+    chunks = shown(store, make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    passages = build(store, [c.chunk_id for c in chunks]).search(QUERY, lecteur_ctx, 3)
+    assert passages  # the line asserted on describes a search that found something
+
+    (record,) = search_lines(logged)
+    blob = f"{record.getMessage()} {record.__dict__}"
+    secrets = [QUERY, *QUERY_WORDS, *GRADED_TEXTS, "عنوان public", str(lecteur_ctx.user_id)]
+    secrets += [c.chunk_id for c in chunks] + [chunks[0].doc_id]
+    for secret in secrets:
+        assert secret not in blob, secret
+
+
+def test_t22_no_text_in_the_line_of_a_search_that_found_nothing(
+    store: QdrantStore, lecteur_ctx: UserContext, logged: pytest.LogCaptureFixture
+) -> None:
+    """The empty path builds its line separately, so T22 is asserted on it separately too."""
+    assert build(store).search(QUERY, lecteur_ctx, 3) == []
+    (record,) = search_lines(logged)
+    blob = f"{record.getMessage()} {record.__dict__}"
+    for secret in (QUERY, *QUERY_WORDS, str(lecteur_ctx.user_id)):
+        assert secret not in blob, secret
+
+
+def test_t22_the_line_holds_no_free_text_field_at_all(logged: pytest.LogCaptureFixture) -> None:
+    """Nothing but the request id is a string: a new field carrying text could not pass here
+    unnoticed, whatever it were called."""
+    run_search(vector_hits=make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    (record,) = search_lines(logged)
+    strings = {k: v for k, v in fields(record).items() if isinstance(v, str)}
+    assert set(strings) == {"event", "request_id"}
+    assert strings["event"] == SEARCH_EVENT
+    uuid.UUID(strings["request_id"])  # a request id and nothing else
+
+
+def test_p2_29_the_line_is_json_serialisable(logged: pytest.LogCaptureFixture) -> None:
+    """The fields are plain JSON values, so they become one JSON object the moment P5's
+    ``JSONFormatter`` copies ``extra`` through (``src/core/logging.py``, P5-owned). Until then
+    they reach the record and stop there, which is what every test above asserts."""
+    run_search(vector_hits=make_doc("public", texts=GRADED_TEXTS, roles=PUBLIC_ROLES))
+    (record,) = search_lines(logged)
+    assert json.loads(json.dumps(fields(record))) == fields(record)
