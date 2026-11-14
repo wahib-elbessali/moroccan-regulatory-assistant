@@ -152,9 +152,7 @@ def grade_node(state: GraphState) -> dict:
         relevant = []
         tokens = 0
     else:
-        doc_blocks = [
-            f'<document n="{i + 1}">{p.chunk.text}</document>' for i, p in enumerate(top)
-        ]
+        doc_blocks = [f'<document n="{i + 1}">{p.chunk.text}</document>' for i, p in enumerate(top)]
         prompt = GRADE_PROMPT.format(
             sub_question=state["sub_questions"][state["current_index"]],
             documents_text="\n".join(doc_blocks),
@@ -169,9 +167,7 @@ def grade_node(state: GraphState) -> dict:
             data = None
 
         rel_indexes = data.get("relevant", []) if data else []
-        relevant = [
-            top[i - 1] for i in rel_indexes if isinstance(i, int) and 1 <= i <= len(top)
-        ]
+        relevant = [top[i - 1] for i in rel_indexes if isinstance(i, int) and 1 <= i <= len(top)]
 
     current_passages = dict(state["passages"])
     for p in relevant:
@@ -303,9 +299,9 @@ def web_node(state: GraphState) -> dict:
 
 def write_node(state: GraphState) -> dict:
     state["emit"](ProcessEvent(step="write", data={}))
-    best_passages = sorted(
-        state["passages"].values(), key=lambda p: p.score, reverse=True
-    )[: agents_cfg.max_passages_to_writer]
+    best_passages = sorted(state["passages"].values(), key=lambda p: p.score, reverse=True)[
+        : agents_cfg.max_passages_to_writer
+    ]
 
     writer = get_writer()
     answer = writer.write(

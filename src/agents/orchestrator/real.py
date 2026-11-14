@@ -3,11 +3,11 @@
 import asyncio
 from collections.abc import AsyncIterator
 
+from src.agents.orchestrator.graph import GRAPH
 from src.core.contracts.errors import AppError
 from src.core.contracts.lang import detect_language
 from src.core.contracts.models import Answer, ProcessEvent, UserContext
 from src.core.contracts.registry import get_narrator
-from src.agents.orchestrator.graph import GRAPH
 
 END_OF_GRAPH = object()
 
@@ -30,7 +30,7 @@ class RealOrchestrator:
         events_queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
-        def emit(e: ProcessEvent) -> None:
+        def emit(e: object) -> None:
             loop.call_soon_threadsafe(events_queue.put_nowait, e)
 
         initial_state = {
@@ -51,13 +51,11 @@ class RealOrchestrator:
             "answer": None,
             "emit": emit,
         }
-
         # Run graph in a separate thread
         task = asyncio.create_task(
-            asyncio.to_thread(GRAPH.invoke, initial_state)
+            asyncio.to_thread(GRAPH.invoke, initial_state)  # type: ignore[arg-type]
         )
         task.add_done_callback(lambda t: emit(END_OF_GRAPH))
-
         # Yield thinking events while graph is running
         while True:
             item = await events_queue.get()
