@@ -1,12 +1,11 @@
 # src/agents/orchestrator/graph.py
 
 import json
-from pathlib import Path
+import logging
+import time
 from typing import Any, TypedDict
 
-import yaml
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel
 
 from src.agents.orchestrator.prompts import (
     GRADE_PROMPT,
@@ -23,30 +22,7 @@ from src.core.contracts.registry import (
 )
 from src.ingestion.normalize import normalize_ar  # P1 helper
 
-
-class AgentsSettings(BaseModel):
-    max_iterations: int = 3
-    max_sub_questions: int = 3
-    max_tokens_per_request: int = 8000
-    grade_top_n: int = 5
-    min_relevant: int = 1
-    max_passages_to_writer: int = 8
-    max_question_chars: int = 1000
-    request_timeout_s: int = 60
-    confidence_unknown_below: float = 0.4
-
-
-def _load_agents_settings() -> AgentsSettings:
-    config_path = Path("config.yaml")
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-            if "agents" in data and isinstance(data["agents"], dict):
-                return AgentsSettings(**data["agents"])
-    return AgentsSettings()
-
-
-agents_cfg = _load_agents_settings()
+logger = logging.getLogger(__name__)
 
 
 class GraphState(TypedDict, total=False):
@@ -72,7 +48,7 @@ class GraphState(TypedDict, total=False):
 
 
 def over_budget(state: GraphState) -> bool:
-    return state["tokens"] >= agents_cfg.max_tokens_per_request
+    return state["tokens"] >= cfg.agents.max_tokens_per_request
 
 
 def parse_json_or_none(text: str) -> dict | None:
@@ -93,8 +69,9 @@ def parse_json_or_none(text: str) -> dict | None:
 
 
 def plan_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     prompt = PLAN_PROMPT.format(
-        max_sub_questions=agents_cfg.max_sub_questions, question=state["question"]
+        max_sub_questions=cfg.agents.max_sub_questions, question=state["question"]
     )
     llm = get_llm()
     tokens = 0
@@ -112,12 +89,23 @@ def plan_node(state: GraphState) -> dict:
     if not subs:
         subs = [state["question"]]
 
-    sub_questions = subs[: agents_cfg.max_sub_questions]
+    sub_questions = subs[: cfg.agents.max_sub_questions]
     needs_web = bool(data.get("needs_web", False)) if data else False
 
     state["emit"](ProcessEvent(step="plan", data={"sub_questions": sub_questions}))
 
     first_q = sub_questions[0]
+    total_tokens = state["tokens"] + tokens
+    logger.info(
+        "orchestrator.plan",
+        extra={
+            "node": "plan",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "sub_questions": len(sub_questions),
+            "tokens": total_tokens,
+        },
+    )
     return {
         "sub_questions": sub_questions,
         "needs_web": needs_web,
@@ -126,11 +114,12 @@ def plan_node(state: GraphState) -> dict:
         "tried": [first_q],
         "iteration": 1,
         "stop_sub": False,
-        "tokens": state["tokens"] + tokens,
+        "tokens": total_tokens,
     }
 
 
 def search_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     retrieval = get_retrieval()
     passages = retrieval.search(state["query"], state["ctx"], top_k=cfg.retrieval.top_k_final)
 
@@ -141,12 +130,23 @@ def search_node(state: GraphState) -> dict:
             data={"query": state["query"], "count": len(passages), "titles": titles},
         )
     )
+    logger.info(
+        "orchestrator.search",
+        extra={
+            "node": "search",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "passages": len(passages),
+            "tokens": state["tokens"],
+        },
+    )
     return {"last_passages": passages}
 
 
 def grade_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     last_passages = state.get("last_passages", [])
-    top = last_passages[: agents_cfg.grade_top_n]
+    top = last_passages[: cfg.agents.grade_top_n]
 
     if not top or over_budget(state):
         relevant = []
@@ -175,7 +175,7 @@ def grade_node(state: GraphState) -> dict:
         if cid not in current_passages or p.score > current_passages[cid].score:
             current_passages[cid] = p
 
-    is_ok = len(relevant) >= agents_cfg.min_relevant
+    is_ok = len(relevant) >= cfg.agents.min_relevant
     kept_labels = list(
         dict.fromkeys(f"{p.chunk.title} — {p.chunk.article or ''}" for p in relevant)
     )
@@ -188,21 +188,33 @@ def grade_node(state: GraphState) -> dict:
     )
 
     unanswered = state["unanswered"]
-    if not is_ok and (over_budget(state) or state["iteration"] >= agents_cfg.max_iterations):
+    if not is_ok and (over_budget(state) or state["iteration"] >= cfg.agents.max_iterations):
         unanswered += 1
 
+    total_tokens = state["tokens"] + tokens
+    logger.info(
+        "orchestrator.grade",
+        extra={
+            "node": "grade",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "passages": len(top),
+            "relevant": len(relevant),
+            "tokens": total_tokens,
+        },
+    )
     return {
         "passages": current_passages,
         "is_ok": is_ok,
         "unanswered": unanswered,
-        "tokens": state["tokens"] + tokens,
+        "tokens": total_tokens,
     }
 
 
 def after_grade_edge(state: GraphState) -> str:
     if over_budget(state):
         return "web"
-    if state.get("is_ok") or state["iteration"] >= agents_cfg.max_iterations:
+    if state.get("is_ok") or state["iteration"] >= cfg.agents.max_iterations:
         if state["current_index"] + 1 < len(state["sub_questions"]):
             return "next_sub"
         return "web"
@@ -210,8 +222,19 @@ def after_grade_edge(state: GraphState) -> str:
 
 
 def next_sub_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     next_idx = state["current_index"] + 1
     next_q = state["sub_questions"][next_idx]
+    logger.info(
+        "orchestrator.next_sub",
+        extra={
+            "node": "next_sub",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "sub_questions": len(state["sub_questions"]),
+            "tokens": state["tokens"],
+        },
+    )
     return {
         "current_index": next_idx,
         "query": next_q,
@@ -222,6 +245,7 @@ def next_sub_node(state: GraphState) -> dict:
 
 
 def reformulate_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     sub_q = state["sub_questions"][state["current_index"]]
     tried_str = "\n".join(state["tried"])
     prompt = REFORMULATE_PROMPT.format(sub_question=sub_q, tried=tried_str)
@@ -234,8 +258,18 @@ def reformulate_node(state: GraphState) -> dict:
     except Exception:
         new_q = ""
 
+    total_tokens = state["tokens"] + tokens
     normalized_new = normalize_ar(new_q)
     if not normalized_new or new_q in state["tried"]:
+        logger.info(
+            "orchestrator.reformulate",
+            extra={
+                "node": "reformulate",
+                "request_id": str(state["ctx"].request_id),
+                "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+                "tokens": total_tokens,
+            },
+        )
         if state["current_index"] + 1 < len(state["sub_questions"]):
             next_idx = state["current_index"] + 1
             next_q = state["sub_questions"][next_idx]
@@ -246,13 +280,14 @@ def reformulate_node(state: GraphState) -> dict:
                 "iteration": 1,
                 "stop_sub": False,
                 "unanswered": state["unanswered"] + 1,
-                "tokens": state["tokens"] + tokens,
+                "tokens": total_tokens,
             }
         return {
             "stop_sub": True,
             "unanswered": state["unanswered"] + 1,
-            "tokens": state["tokens"] + tokens,
+            "tokens": total_tokens,
         }
+
     next_iter = state["iteration"] + 1
     state["emit"](
         ProcessEvent(
@@ -260,13 +295,21 @@ def reformulate_node(state: GraphState) -> dict:
             data={"old_query": state["query"], "new_query": new_q, "iteration": next_iter},
         )
     )
-
+    logger.info(
+        "orchestrator.reformulate",
+        extra={
+            "node": "reformulate",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "tokens": total_tokens,
+        },
+    )
     return {
         "query": new_q,
         "tried": state["tried"] + [new_q],
         "iteration": next_iter,
         "stop_sub": False,
-        "tokens": state["tokens"] + tokens,
+        "tokens": total_tokens,
     }
 
 
@@ -277,6 +320,7 @@ def after_reformulate_edge(state: GraphState) -> str:
 
 
 def web_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     results = []
 
     if state["needs_web"] or state["unanswered"] > 0:
@@ -294,13 +338,24 @@ def web_node(state: GraphState) -> dict:
             )
         )
 
+    logger.info(
+        "orchestrator.web",
+        extra={
+            "node": "web",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "passages": len(results),
+            "tokens": state["tokens"],
+        },
+    )
     return {"web_results": results}
 
 
 def write_node(state: GraphState) -> dict:
+    t0 = time.perf_counter()
     state["emit"](ProcessEvent(step="write", data={}))
     best_passages = sorted(state["passages"].values(), key=lambda p: p.score, reverse=True)[
-        : agents_cfg.max_passages_to_writer
+        : cfg.agents.max_passages_to_writer
     ]
 
     writer = get_writer()
@@ -310,6 +365,16 @@ def write_node(state: GraphState) -> dict:
         state["web_results"],
         state["ctx"],
         emit=state["emit"],
+    )
+    logger.info(
+        "orchestrator.write",
+        extra={
+            "node": "write",
+            "request_id": str(state["ctx"].request_id),
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "passages": len(best_passages),
+            "tokens": state["tokens"],
+        },
     )
     return {"answer": answer}
 

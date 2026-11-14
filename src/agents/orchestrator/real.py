@@ -2,8 +2,9 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 
-from src.agents.orchestrator.graph import GRAPH
+from src.agents.orchestrator.graph import GRAPH, GraphState
 from src.core.contracts.errors import AppError
 from src.core.contracts.lang import detect_language
 from src.core.contracts.models import Answer, ProcessEvent, UserContext
@@ -33,7 +34,7 @@ class RealOrchestrator:
         def emit(e: object) -> None:
             loop.call_soon_threadsafe(events_queue.put_nowait, e)
 
-        initial_state = {
+        initial_state: GraphState = {
             "question": question,
             "ctx": ctx,
             "use_web": use_web,
@@ -51,11 +52,14 @@ class RealOrchestrator:
             "answer": None,
             "emit": emit,
         }
+
+        def invoke_graph() -> dict[str, Any]:
+            return GRAPH.invoke(initial_state, {"recursion_limit": 50})
+
         # Run graph in a separate thread
-        task = asyncio.create_task(
-            asyncio.to_thread(GRAPH.invoke, initial_state)  # type: ignore[arg-type]
-        )
+        task = asyncio.create_task(asyncio.to_thread(invoke_graph))
         task.add_done_callback(lambda t: emit(END_OF_GRAPH))
+
         # Yield thinking events while graph is running
         while True:
             item = await events_queue.get()
@@ -72,7 +76,12 @@ class RealOrchestrator:
             answer: Answer = res_state["answer"]
             yield {"event": "answer", "data": answer.model_dump(mode="json")}
         except AppError as e:
-            yield {"event": "error", "data": {"code": e.code, "message": e.message}}
+            msg = (
+                "حدث خطأ أثناء معالجة الطلب."
+                if language == "ar"
+                else "Une erreur est survenue lors du traitement."
+            )
+            yield {"event": "error", "data": {"code": e.code, "message": msg}}
         except Exception:
             yield {
                 "event": "error",
