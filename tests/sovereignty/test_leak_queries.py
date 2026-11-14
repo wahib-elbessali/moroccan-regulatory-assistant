@@ -1,4 +1,4 @@
-"""P6 leak-query tests T5 and T6 (mandatory test b), on ``tests/sovereignty/leak_queries.jsonl``.
+"""P6 leak-query tests T5, T6 (mandatory test b) and T16, on ``tests/sovereignty/leak_queries.jsonl``.
 
 The file checks always run (also in CI). The ``/search`` checks run against the live compose,
 after ``make seed`` has registered the corpus in ``web-search``: every query is sent from inside
@@ -12,6 +12,8 @@ they are skipped.
 import json
 import shutil
 import subprocess
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -38,17 +40,18 @@ headers = {"Authorization": "Bearer " + os.environ["LEAK_API_TOKEN"]}
 results = []
 with httpx.Client(timeout=30) as client:
     for query in queries:
-        body = {"query": query, "max_results": 1, "request_id": str(uuid.uuid4())}
+        request_id = str(uuid.uuid4())
+        body = {"query": query, "max_results": 1, "request_id": request_id}
         try:
             response = client.post(url, json=body, headers=headers)
         except httpx.HTTPError as exc:
-            results.append({"status": 0, "code": type(exc).__name__})
+            results.append({"status": 0, "code": type(exc).__name__, "request_id": request_id})
             continue
         try:
             code = response.json().get("code")
         except ValueError:
             code = None
-        results.append({"status": response.status_code, "code": code})
+        results.append({"status": response.status_code, "code": code, "request_id": request_id})
 print(json.dumps(results))
 """
 
@@ -105,7 +108,7 @@ def test_every_query_fits_what_search_accepts() -> None:
         assert NGRAM_WORDS <= words <= limit, (words, row["query"])
 
 
-# --- Through /search on the live compose (T5, T6) ---------------------------------------------
+# --- Through /search on the live compose (T5, T6, T16) ---------------------------------------------
 
 
 def _api_is_running() -> bool:
@@ -136,11 +139,35 @@ def _outcome(result: dict[str, Any]) -> str:
     return f"error {result['status']} {result['code']}"
 
 
+@dataclass
+class Run:
+    """What one run of every query through /search left behind."""
+
+    results: list[dict[str, Any]]  # status, code and request_id, in QUERIES order
+    outcomes: list[str]  # "blocked", "allowed" or "error …", in QUERIES order
+    logs: str  # web-search's logs during the run
+
+
+def _web_search_logs(since: datetime) -> str:
+    result = subprocess.run(
+        ["docker", "compose", "logs", "--no-color", "--no-log-prefix", "--since", since.isoformat()]
+        + ["web-search"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    return result.stdout
+
+
 @pytest.fixture(scope="module")
-def outcomes() -> list[str]:
-    """One outcome per query in QUERIES, from a single run inside the api container."""
+def run() -> Run:
+    """Every query in QUERIES sent once, from inside the api container."""
     if not _api_is_running():
         pytest.skip("api and web-search are not running (use `make up && make seed` first)")
+    since = datetime.now(UTC) - timedelta(seconds=5)  # margin for a host/docker clock gap
     stdin = json.dumps([row["query"] for row in QUERIES], ensure_ascii=False) + "\n"
     result = subprocess.run(
         ["docker", "compose", "exec", "-T", "api", "python", "-c", SEND_SCRIPT],
@@ -156,7 +183,7 @@ def outcomes() -> list[str]:
     if any(r["status"] == 403 and r["code"] == "web_disabled" for r in results):
         pytest.skip("web.enabled is false in config.yaml")
     assert len(results) == len(QUERIES)
-    return [_outcome(r) for r in results]
+    return Run(results, [_outcome(r) for r in results], _web_search_logs(since))
 
 
 def _mismatches(outcomes: list[str], expected: str) -> list[str]:
@@ -167,13 +194,55 @@ def _mismatches(outcomes: list[str], expected: str) -> list[str]:
     ]
 
 
-def test_t5_queries_copying_protected_documents_are_blocked(outcomes: list[str]) -> None:
+def test_t5_queries_copying_protected_documents_are_blocked(run: Run) -> None:
     """T5 (mandatory test b). If none is blocked, check that `make seed` ran."""
-    wrong = _mismatches(outcomes, "blocked")
+    wrong = _mismatches(run.outcomes, "blocked")
     assert not wrong, f"{len(wrong)} queries not blocked:\n" + "\n".join(wrong)
 
 
-def test_t6_legitimate_legal_queries_go_through(outcomes: list[str]) -> None:
+def test_t6_legitimate_legal_queries_go_through(run: Run) -> None:
     """T6."""
-    wrong = _mismatches(outcomes, "allowed")
+    wrong = _mismatches(run.outcomes, "allowed")
     assert not wrong, f"{len(wrong)} queries wrongly blocked:\n" + "\n".join(wrong)
+
+
+def _log_events(logs: str) -> list[dict[str, Any]]:
+    """web-search's one-line JSON search events (app.py log_search); other lines are ignored."""
+    events = []
+    for line in logs.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and "request_id" in event:
+            events.append(event)
+    return events
+
+
+def test_t16_blocked_queries_never_reach_the_logs(run: Run) -> None:
+    """T16: a blocked query is logged by its request_id and status only, never its words."""
+    events = {event["request_id"]: event for event in _log_events(run.logs)}
+    for row, result, outcome in zip(QUERIES, run.results, run.outcomes, strict=True):
+        if outcome != "blocked":
+            continue
+        assert row["query"] not in run.logs, f"blocked query logged: {row['source_doc']}"
+        event = events.get(result["request_id"])
+        assert event is not None, f"no log line for a blocked query: {row['source_doc']}"
+        assert event["status"] == "blocked" and "query" not in event, event.keys()
+
+
+def test_t16_each_allowed_query_is_logged_once_with_its_request_id(run: Run) -> None:
+    """T16: an allowed query that reached SearxNG is logged exactly once, with its request_id."""
+    events = _log_events(run.logs)
+    searched = [
+        (row, result)
+        for row, result in zip(QUERIES, run.results, strict=True)
+        if result["status"] == 200
+    ]
+    if not searched:
+        pytest.skip("no query reached SearxNG (internet off?): nothing allowed was logged")
+    for row, result in searched:
+        logged = [event for event in events if event.get("query") == row["query"]]
+        assert len(logged) == 1, f"logged {len(logged)} times: {row['source_doc']}"
+        assert logged[0]["request_id"] == result["request_id"]
+        assert logged[0]["status"] == "ok"
