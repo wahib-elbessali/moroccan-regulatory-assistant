@@ -4,6 +4,7 @@ import {
   ShieldCheck, Sparkles, X,
 } from "lucide-react";
 import { api } from "../api.js";
+import { appendThinkingFragment, emptyThinking } from "../app/thinking.js";
 
 const MAX_QUESTION_CHARS = 1000;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,8 +36,8 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
     if (!clean || clean.length > MAX_QUESTION_CHARS) return setError(t.questionLimit);
     setError(""); setQuestion(""); setBusy(true);
     const id = crypto.randomUUID();
-    setMessages((items) => [...items, { id, question: clean, thinking: [], answer: null, status: "working" }]);
-    const addThinking = (text) => setMessages((items) => items.map((item) => item.id === id ? { ...item, thinking: [...item.thinking, text] } : item));
+    setMessages((items) => [...items, { id, question: clean, thinking: emptyThinking(), answer: null, status: "working" }]);
+    const addThinking = (text) => setMessages((items) => items.map((item) => item.id === id ? { ...item, thinking: appendThinkingFragment(item.thinking, text) } : item));
     const setAnswer = (answer) => setMessages((items) => items.map((item) => item.id === id ? { ...item, answer, status: "done" } : item));
 
     try {
@@ -46,7 +47,7 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
           : ["Analyse de la question et de son sujet juridique…", "Recherche dans les documents accessibles…", "Vérification de la référence et du passage…"];
         for (const fragment of fragments) {
           await pause(480);
-          addThinking(fragment);
+          addThinking(`${fragment}\n`);
         }
         const answer = lang === "ar"
           ? { status: "answered", text: "تحدد الدورية أجل معالجة الطلبات في ثلاثين يومًا [1] ابتداءً من تاريخ إيداع الملف الكامل.", confidence: 0.86, language: "ar", citations: [{ doc_id: "doc-public-12", url: null, title: "دورية رقم 12 لسنة 2025", article: "المادة 2", page: 1, source: "الجريدة الرسمية عدد 7281", date: "2025-03-12", excerpt: "يتعين على المصالح المختصة معالجة الطلبات داخل أجل ثلاثين يومًا." }] }
@@ -79,7 +80,7 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
         <div className="flex items-start gap-3"><span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#245c48] text-white"><Sparkles size={15} /></span><div className="min-w-0 flex-1 pt-1">
           <details open={item.status === "working" || thinkingOpen[item.id] === true} onToggle={(event) => { const isOpen = event.currentTarget.open; setThinkingOpen((value) => ({ ...value, [item.id]: isOpen })); }} className="mb-3 max-w-2xl rounded-md border border-[#e3e3da] bg-[#fbfaf6]">
             <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#646b60]"><Activity size={14} className={item.status === "working" ? "animate-pulse text-[#b76940]" : "text-[#789078]"} />{t.thinking}<ChevronDown size={14} className="ms-auto" /></summary>
-            <div className="grid gap-2 border-t border-[#e3e3da] px-3 py-3">{item.thinking.map((step, index) => <p key={index} dir="auto" className="flex items-start gap-2 text-xs leading-5 text-[#777b70]"><Check size={13} className="mt-0.5 shrink-0 text-[#6b906b]" />{step}</p>)}{item.status === "working" && <span className="h-1 w-12 animate-pulse rounded bg-[#d2b69a]" />}</div>
+            <div className="grid gap-2 border-t border-[#e3e3da] px-3 py-3">{[...item.thinking.lines, item.thinking.current].filter((line) => line.length > 0).map((line, index) => <p key={index} dir="auto" className="flex items-start gap-2 text-xs leading-5 text-[#777b70]"><Check size={13} className="mt-0.5 shrink-0 text-[#6b906b]" />{line}</p>)}{item.status === "working" && <span className="h-1 w-12 animate-pulse rounded bg-[#d2b69a]" />}</div>
           </details>
           {!item.answer ? <div className="flex items-center gap-2 py-2 text-sm text-[#777b70]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#b76940]" />{lang === "ar" ? "جارٍ إعداد الإجابة…" : "Préparation de la réponse…"}</div> : item.answer.status === "unknown" ? <p dir="auto" className={`max-w-3xl text-[15px] leading-8 text-[#30382e] ${lang === "ar" ? "arabic" : ""}`}>{item.answer.text}</p> : item.answer.status === "error" ? <p role="alert" dir="auto" className="rounded-md bg-[#f8e9e5] px-3 py-2 text-sm text-[#9b4435]">{item.answer.text}</p> : <div className="max-w-3xl">
             {item.answer.citations?.some((citation) => citation.url) && <div className="mb-3 border-s-2 border-[#c56e3d] bg-[#f6eee7] px-3 py-2 text-xs font-semibold text-[#885232]">{lang === "ar" ? "تتضمن هذه الإجابة مصادر من الويب." : "Cette réponse comprend des sources web."}</div>}

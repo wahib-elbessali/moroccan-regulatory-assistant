@@ -35,6 +35,8 @@ node .\node_modules\vite\bin\vite.js --host 0.0.0.0
 
 Dans ce workspace Windows, le `&` du chemin parent peut interrompre les scripts `npm run`. Appeler Vite directement avec Node évite ce problème. Pour vérifier le bundle : `node .\node_modules\vite\bin\vite.js build`.
 
+Les tests ciblés du flux thinking se lancent avec `node --test` depuis `src/ui`.
+
 Par défaut, l'interface démarre en **mode démo local** : choisissez un rôle sur l'écran de connexion. Aucune API n'est nécessaire et les données de démonstration restent en mémoire.
 
 Pour utiliser l'API P5/P3, lancer Vite avec `VITE_DEMO_MODE=false`. Les appels `/api/*` sont alors transmis à `http://127.0.0.1:8000` par défaut. La cible peut être remplacée avec `API_PROXY_TARGET`. En production, Nginx transmet `/api/` au service `api:8000`.
