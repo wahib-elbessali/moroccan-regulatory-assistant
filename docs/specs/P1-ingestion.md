@@ -384,6 +384,20 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
+| — | Sun 11-15 – Fri 11-20 | Exams: no planned work |
+| 6 | Sat 11-21 | With P2: real ingestion into Qdrant; with P6: OCR on real Bulletin Officiel scans |
+| 7 | Sun 11-22 | Corpus close to ~500 pages; `seed` run on the real system · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** real `get_*` for P2, P5, P6; full corpus ingested; all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Tune `ingestion.*`; corpus loaded on the demo machine |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
+
+| Day | Date | Delivered |
+|---|---|---|
 | 0 | Mon 11-09 | Read the docs; choose the main theme and start collecting public texts |
 | 1 | Tue 11-10 | `normalize_ar` with T6–T7; `manifest.csv` started; first sample chunks drafted |
 | 2 | Wed 11-11 | **Checkpoint:** `FakeIngestion` + contract test merged; `sample_chunks.jsonl` merged; `normalize_ar` merged with T6–T7; `manifest.csv` with the first documents |

@@ -397,6 +397,20 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
+| — | Sun 11-15 – Fri 11-20 | Exams: no planned work |
+| 6 | Sat 11-21 | Prompts tried on the real LLM (P6); excerpt-check misses studied |
+| 7 | Sun 11-22 | With P3: real `write` behind the graph; `LLMNarrator` · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** against the real LLM; prompts tuned on real questions in Arabic and French; `LLMNarrator`; T18 green; all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Tune `agents.confidence_unknown_below` and `answer.*`; Rédacteur prompt fixes |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
+
+| Day | Date | Delivered |
+|---|---|---|
 | 0 | Mon 11-09 | Read the docs; try the Rédacteur prompt by hand on two Arabic passages |
 | 1 | Tue 11-10 | `Writer` and `Narrator` Protocols, `FakeWriter`, `FakeNarrator`; `texts.py` |
 | 2 | Wed 11-11 | **Checkpoint:** `Writer` and `Narrator` Protocols, `FakeWriter`, `FakeNarrator` and their contract tests merged; `texts.py` with the fixed texts |

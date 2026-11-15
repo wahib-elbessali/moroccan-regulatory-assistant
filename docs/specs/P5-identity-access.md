@@ -533,6 +533,21 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
+| — | Sun 11-15 – Mon 11-16 | **Checkpoint:** the day-5 items still open merged by midnight, the night of Monday 11-16: document, admin, account-request and conversation routes, `set_document_roles`, access tests through HTTP |
+| — | Tue 11-17 – Fri 11-20 | Exam week: no planned work |
+| 6 | Sat 11-21 | With P1 and P2: upload → ingestion → publication on the real parts |
+| 7 | Sun 11-22 | With P6: real `set_blocking`; end-to-end test (T39) written · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** against the real P1, P2, P6: T7–T10, T17, T39 green (mandatory test a, end-to-end test); all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Demo accounts and roles created on the demo machine |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
+
+| Day | Date | Delivered |
+|---|---|---|
 | 0 | Mon 11-09 | Read the docs; prepare the skeleton and the first six tables |
 | 1 | Tue 11-10 | **Checkpoint:** skeleton with every router mounted, middleware, error handler, `cfg`, logging, `registry.py`, user fixtures, `FakeDocumentRights`, `FakeAudit` + contract tests |
 | 2 | Wed 11-11 | **Checkpoint:** the first six tables (the two conversation tables come on day 4) + migrations, roles seeded, first admin; login and `get_current_user_context` working; `audited_stream` merged |

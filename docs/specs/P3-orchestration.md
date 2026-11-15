@@ -429,6 +429,20 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
+| — | Sun 11-15 – Fri 11-20 | Exams: no planned work |
+| 6 | Sat 11-21 | Prompts tried on the real LLM (P6); JSON fixes |
+| 7 | Sun 11-22 | With P2: real search; with P4: real `write` · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** against the real P2, P4, P6 and the real LLM; prompts tuned on a few real questions; T24 green; all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Tune `agents.*`; check the time per question |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
+
+| Day | Date | Delivered |
+|---|---|---|
 | 0 | Mon 11-09 | Read the docs; try a small LangGraph graph with two nodes and a conditional edge |
 | 1 | Tue 11-10 | `Orchestrator` Protocol, `FakeOrchestrator`, `detect_language`; `/ask` route streaming |
 | 2 | Wed 11-11 | **Checkpoint:** `Orchestrator` Protocol, `FakeOrchestrator`, `detect_language` and the contract test merged; `/ask` streams the fake through `audited_stream` |
