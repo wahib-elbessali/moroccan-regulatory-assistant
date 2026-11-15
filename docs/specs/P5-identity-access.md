@@ -136,8 +136,9 @@ Anyone can ask for an account; only the admin creates it. The admin keeps `creat
 |---|---|---|
 | `UserContext` | 00-shared §5.1 | Everyone |
 | `get_current_user_context`, `require_roles`, `record_audit_event` | 00-shared §6.1 | Every route |
-| `DocumentRights` (`set_document_roles`, `set_status`, `get_status`, `set_content_hash`, `create_document`) | 00-shared §6.1 | P1 (`create_document`: its command line) |
+| `DocumentRights` (`set_document_roles`, `set_status`, `get_status`, `set_content_hash`, `create_document`) | 00-shared §6.1 | P1 (statuses, duplicate warning, handing over for publication; `create_document` for its command line) |
 | `Audit` (`log_query`, `log_action`) | 00-shared §6.1 | P1, P3, P6 |
+| `audited_stream` | 00-shared §6.1 | P3 (`/ask`) |
 | HTTP API (`/auth`, `/documents`, `/conversations`, `/admin`) | 00-shared §8 | P7 |
 | `registry.py`, user fixtures, `cfg`, logging | this spec, §3.1 | Everyone |
 | `FakeDocumentRights`, `FakeAudit` | 00-shared §9 | P1, P3, P6 |

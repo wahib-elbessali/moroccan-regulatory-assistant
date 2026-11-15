@@ -112,7 +112,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 | What | Defined in | Used by |
 |---|---|---|
 | `Ingestion.ingest`, `Ingestion.delete` | 00-shared §6.2 | P5 (upload and delete routes), the CLI |
-| `normalize_ar(text) -> str` | this spec, P1-15 | P2 (queries, BM25), P4 (excerpt check), P6 (fingerprints) |
+| `normalize_ar(text) -> str` | this spec, P1-15 | P2 (queries, BM25), P3 (empty questions and sub-questions), P4 (excerpt check), P6 (fingerprints) |
 | `tests/fixtures/sample_chunks.jsonl` + `sample_chunks` fixture | P1-05 | All parts' tests |
 | `FakeIngestion` | 00-shared §9 | P5 |
 

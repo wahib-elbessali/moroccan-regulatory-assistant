@@ -95,7 +95,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 | `Retrieval.update_roles`, `hide`, `show` | 00-shared §6.3 | P5 (publication, rights change, delete) |
 | `FakeRetrieval` | 00-shared §9 | P1, P3, P5 |
 | `src/retrieval/stopwords_ar.txt` | P2-20 | P4 (word-check fallback) |
-| `POST /search` | 00-shared §8 | P7 |
+| `POST /search` | 00-shared §8 | P5 (access test T7), evaluation |
 
 ## 5. Contracts consumed
 

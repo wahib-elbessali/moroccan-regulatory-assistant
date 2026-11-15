@@ -120,7 +120,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 | `normalize_ar` | P1 | Empty sub-questions, reformulations and questions |
 | `Writer.write` (with `emit`) | P4 | The answer and its `verify` event |
 | `Narrator.narrate` | P4 | `thinking` events |
-| `UserContext`, `get_current_user_context`, the `log_query` helper | P5 | Every call, the route, the audit |
+| `UserContext`, `get_current_user_context`, `audited_stream` | P5 | Every call, the route, the audit |
 | `Passage`, `WebLookup`, `Answer`, `ProcessEvent`, SSE events | 00-shared §5 | State and stream |
 
 ---
