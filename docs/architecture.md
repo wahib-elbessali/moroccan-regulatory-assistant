@@ -140,8 +140,9 @@ flowchart LR
 
 | Service | Content | Networks | Notes |
 |---|---|---|---|
-| `api` | FastAPI app: P1, P2, P3, P4, P5 and the P6 web agent code; also runs P1's command line | `internal` + `front` | Publishes `:8000` to the host (OpenAPI docs). Volumes `uploads` → `storage/uploads`, `extract_cache` → `cache/extracted`, `indexes` → `data/indexes`; `data/raw` (the corpus) mounted read-only |
-| `ui` | P7 app | `internal` + `front` | Publishes its port to the host |
+| `gateway` | nginx reverse proxy, no data and none of the project's code | `front` + `internal` | The only service that publishes ports to the host: `:3000` → `ui`, `:8000` → `api` (OpenAPI docs). Response buffering off, so the `/ask` stream is not held back |
+| `api` | FastAPI app: P1, P2, P3, P4, P5 and the P6 web agent code; also runs P1's command line | `internal` | Reached from the host through `gateway`. Volumes `uploads` → `storage/uploads`, `extract_cache` → `cache/extracted`, `indexes` → `data/indexes`; `data/raw` (the corpus) mounted read-only |
+| `ui` | P7 app | `internal` | Reached from the host through `gateway` |
 | `postgres` | PostgreSQL | `internal` | Volume `pg_data` |
 | `qdrant` | Qdrant | `internal` | Volume `qdrant_data` |
 | `llm` | Ollama | `internal` | Models pre-pulled by `make models` |
@@ -152,17 +153,17 @@ flowchart LR
 | `cloud-gateway` | Proxy to a cloud LLM/OCR API | `internal` + `egress` | Profile `cloud` only, dev only |
 
 - `internal` is declared with `internal: true`: containers on it cannot reach the internet.
-- `front` is a bridge network with IP masquerade turned off: the host's browser can reach `ui` and `api` through it, and it has no route to the internet.
+- `front` is the only network the host's browser reaches, and only `gateway` is on it. `api` and `ui` stay on `internal` alone: turning off IP masquerade on a bridge cuts the internet on Linux but not on Docker Desktop (Windows, macOS), while `internal: true` cuts it on both.
 - Profiles: default = `local` (Qwen 2.5 7B), `light` (Qwen 2.5 3B), `cloud` (adds `cloud-gateway`).
 - `make models` downloads every model ahead of time, so `docker compose up` works offline.
 
 ```mermaid
 flowchart LR
-    HOST(("Host browser")) --> FRONT{{"front: reachable from the host, no internet"}}
-    FRONT --- UI["ui"]
-    FRONT --- API["api"]
-    UI --- INT{{"internal: no internet"}}
-    API --- INT
+    HOST(("Host browser")) --> FRONT{{"front: reachable from the host"}}
+    FRONT --- GW["gateway (nginx)"]
+    GW --- INT{{"internal: no internet"}}
+    INT --- UI["ui"]
+    INT --- API["api"]
     INT --- PG["postgres"] & QD["qdrant"] & LLM["llm"] & MOD["models"] & OCR["ocr"]
     INT --- WS["web-search"]
     WS --- EG{{"egress"}}
@@ -565,7 +566,7 @@ erDiagram
 
 ## 13. Configuration
 
-- **`.env`**: secrets and deployment switches only (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `LEAK_HMAC_KEY`, `LEAK_API_TOKEN`, `ALLOW_CLOUD_LLM`). Never committed; `.env.example` is.
+- **`.env`**: secrets and deployment switches only (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `LEAK_HMAC_KEY`, `LEAK_API_TOKEN`, `SEARXNG_SECRET`, `ALLOW_CLOUD_LLM`). Never committed; `.env.example` is.
 - **`config.yaml`**: everything else (model names, `max_iterations`, token budget, top-k values, thresholds, and the `fake` / `real` choice for each contract during development). Keys are listed in `00-shared.md`.
 
 ---
