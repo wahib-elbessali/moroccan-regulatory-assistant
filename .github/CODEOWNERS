@@ -1,9 +1,3 @@
-# Who must approve a change. The last matching line wins, so specific paths come after general ones.
-# Any one person listed on a line can approve; a PR author can never approve their own PR.
-# Coordination (@wahib-elbessali, @Basma-el-boudali, @Fatima-Zahra21) is on every line, so any PR can
-# be approved even when a group member is away. Members not listed yet are added when their
-# username is known.
-
 # ---------- Default: coordination ----------
 *                                         @wahib-elbessali @Basma-el-boudali @Fatima-Zahra21
 
