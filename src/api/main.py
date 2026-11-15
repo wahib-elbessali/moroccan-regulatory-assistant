@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from src.api.routes import admin, ask, auth, conversations, documents, search
 from src.core.contracts.errors import AppError
 from src.core.db.init_db import init_db
-from src.core.logging import request_id_ctx_var, setup_logging
+from src.core.logging import setup_logging
 from src.core.security import request_id_var
 
 setup_logging()
@@ -50,7 +50,7 @@ async def request_id_middleware(
     """Set request_id before authentication and echo X-Request-ID in response (P5-02)."""
     rid = _parse_valid_uuid(request.headers.get("X-Request-ID")) or uuid4()
     sec_token = request_id_var.set(rid)
-    log_token = request_id_ctx_var.set(rid)
+    log_token = request_id_var.set(rid)
     request.state.request_id = str(rid)
     start_time = time.perf_counter()
 
@@ -70,7 +70,7 @@ async def request_id_middleware(
         response.headers["X-Request-ID"] = str(rid)
         return response
     finally:
-        request_id_ctx_var.reset(log_token)
+        request_id_var.reset(log_token)
         request_id_var.reset(sec_token)
 
 

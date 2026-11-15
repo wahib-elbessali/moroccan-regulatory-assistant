@@ -78,7 +78,7 @@ def create_access_token(
 
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decode and verify an HS256 JWT access token."""
-    secret_key = os.getenv("JWT_SECRET") or cfg.JWT_SECRET
+    secret_key = os.getenv("JWT_SECRET") or cfg.JWT_SECRET.get_secret_value()
     if not secret_key:
         raise RuntimeError("JWT_SECRET environment variable must be set.")
     return dict(jwt.decode(token, secret_key, algorithms=["HS256"]))
