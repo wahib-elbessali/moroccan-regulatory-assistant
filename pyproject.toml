@@ -88,3 +88,7 @@ skip_empty = true
 dev = [
     "pytest>=9.2.0",
 ]
+
+[tool.ruff.lint]
+ignore = ["B008"]
+

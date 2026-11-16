@@ -1,12 +1,13 @@
 from typing import Any
 from uuid import UUID
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_context, record_audit_event
+from src.core.contracts.errors import NotFound
 from src.core.contracts.models import UserContext
-from src.core.contracts.errors import NotFound, Forbidden
 from src.core.db.models import Document
 from src.core.db.session import get_db
 
@@ -68,7 +69,7 @@ def delete_document(
     doc = db.get(Document, doc_id)
     if not doc:
         raise NotFound("document not found")
-    
+
     db.delete(doc)
     db.commit()
     record_audit_event(ctx, "delete_document", {"doc_id": str(doc_id)})
@@ -84,7 +85,7 @@ def set_document_roles(
     doc = db.get(Document, doc_id)
     if not doc:
         raise NotFound("document not found")
-    
+
     roles = body.get("roles", [])
     record_audit_event(ctx, "set_document_roles", {"doc_id": str(doc_id), "roles": roles})
     return {"doc_id": str(doc_id), "status": "roles_updated", "roles": roles}
