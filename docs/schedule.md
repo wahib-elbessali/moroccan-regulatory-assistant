@@ -1,6 +1,6 @@
 # Schedule
 
-> Status: **v2**. Day 0 is Mon 2026-11-09: every group receives and reads the documents. Building starts on day 1, Tue 2026-11-10. Submission is on day 13, Sun 2026-11-22. Weekends are working days. Each part's own plan, day by day, is in its spec, §10.
+> Status: **v3**. Day 0 is Mon 2026-11-09: every group receives and reads the documents. Building starts on day 1, Tue 2026-11-10. Tue 11-17 – Fri 11-20 is exam week, with no planned work; building resumes on day 6, Sat 11-21. Everything is ready on day 13, Sat 11-28, and submission is on Sun 2026-11-29. Weekends are working days. Each part's own plan, day by day, is in its spec, §10.
 
 ---
 
@@ -16,21 +16,41 @@ gantt
     Contracts merged                :milestone, 2026-11-11, 0d
     Real parts against fakes        :2026-11-12, 3d
     End to end with fakes           :milestone, 2026-11-14, 0d
-    Real pairs                      :2026-11-15, 2d
-    Full integration                :2026-11-17, 1d
-    Mandatory tests green           :milestone, 2026-11-17, 0d
+    Day-5 items of P5 and P6        :2026-11-15, 2d
+    Exam week (no planned work)     :2026-11-17, 4d
+    Real pairs                      :2026-11-21, 2d
+    Real pairs working              :milestone, 2026-11-22, 0d
+    Full integration                :2026-11-23, 1d
+    Mandatory tests green           :milestone, 2026-11-23, 0d
     section Test data
     Leak-test queries               :2026-11-12, 3d
-    Evaluation set and run_eval.py  :2026-11-12, 5d
+    Evaluation set and run_eval.py  :2026-11-12, 11d
     section Finish
-    Feature freeze                  :milestone, 2026-11-18, 0d
-    Evaluation and tuning           :2026-11-18, 3d
-    Demo machine                    :2026-11-19, 4d
-    Report                          :2026-11-20, 2d
-    Rehearsal 1                     :milestone, 2026-11-21, 0d
-    Rehearsal 2 and submission      :milestone, 2026-11-22, 0d
+    Feature freeze                  :milestone, 2026-11-24, 0d
+    Evaluation and tuning           :2026-11-24, 3d
+    Demo machine                    :2026-11-25, 4d
+    Report                          :2026-11-26, 2d
+    Rehearsal 1                     :milestone, 2026-11-27, 0d
+    Rehearsal 2                     :milestone, 2026-11-28, 0d
+    Submission                      :milestone, 2026-11-29, 0d
 ```
 
+
+| Day | Date | Build | In parallel | Checkpoint |
+|---|---|---|---|---|
+| — | Sun 11-15 – Mon 11-16 | P5: document, admin, account-request and conversation routes, `set_document_roles`, access tests through HTTP · P6: `models` service, `OllamaClient`, `HttpModelsClient`, `HttpOCRClient` | | **These day-5 items of P5 and P6 merged by midnight, the night of Monday 11-16** |
+| — | Tue 11-17 – Fri 11-20 | Exam week: no planned work (anyone may keep working) | | |
+| 6 | Sat 11-21 | Real pairs: P1 + P2 (real ingestion into Qdrant, real bge-m3 and re-ranker) · P6 serves the real models · P3 and P4 try their prompts on the real LLM · P7: admin screens and conversation history | | |
+| 7 | Sun 11-22 | Real pairs: P3 + P2 · P3 + P4 (real `write`) · P5 + P6 (real `set_blocking`) · P7 on the real API · P6: offline test tried | **Evaluation set delivered** (`evaluation/dataset.jsonl`, 50+ questions) · `evaluation/run_eval.py` runs against the fakes | **Real pairs working; meeting Sunday night** |
+| 8 | Mon 11-23 | Full integration: every contract `real` · full corpus ingested | | **Mandatory tests (a) and (b) green; end-to-end test green** |
+| 9 | Tue 11-24 | **Feature freeze** | First evaluation run; results shared with every group | |
+| 10 | Wed 11-25 | Tuning and bug fixes · demo machine set up, offline test | | |
+| 11 | Thu 11-26 | Tuning and bug fixes | Second evaluation run (evening) · report sections drafted · `docs/evaluation.md` | |
+| 12 | Fri 11-27 | Fixes only | Report assembled · **demo rehearsal 1** | |
+| 13 | Sat 11-28 | Fixes only (morning) | **Demo rehearsal 2** | **Everything ready** |
+| — | Sun 11-29 | | | **Submission** |
+
+### Previous plan (before exam week)
 
 | Day | Date | Build | In parallel | Checkpoint |
 |---|---|---|---|---|
@@ -54,6 +74,7 @@ gantt
 ## 2. Rules
 
 - **Day 0 is for reading.** Questions about a spec are raised on day 0 or day 1, so answers arrive before the contracts are merged on day 2.
+- **Exam week (Tue 11-17 – Fri 11-20).** No work is planned. Anyone who wants to keep working may.
 - **Integration in pairs (days 6–7).** Parts that depend on each other switch to `real` together first, so day 8 only joins pairs that already work.
 - **Day-2 items that depend on another day-2 item** (P3's `/ask` through `audited_stream`, P7's chat on `/ask` and login) may use a local stub on day 2 and switch to the real one on day 3.
 - **Feature freeze (day 9).** From day 9, only tuning and bug fixes are merged. A new feature after that point is out of the submission.

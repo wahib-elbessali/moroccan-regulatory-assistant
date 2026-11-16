@@ -120,7 +120,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 | `normalize_ar` | P1 | Empty sub-questions, reformulations and questions |
 | `Writer.write` (with `emit`) | P4 | The answer and its `verify` event |
 | `Narrator.narrate` | P4 | `thinking` events |
-| `UserContext`, `get_current_user_context`, the `log_query` helper | P5 | Every call, the route, the audit |
+| `UserContext`, `get_current_user_context`, `audited_stream` | P5 | Every call, the route, the audit |
 | `Passage`, `WebLookup`, `Answer`, `ProcessEvent`, SSE events | 00-shared §5 | State and stream |
 
 ---
@@ -426,6 +426,20 @@ Contract tests in `tests/contracts/test_orchestrator.py` run T1 and T22 on both 
 ## 10. Schedule
 
 Day 0 is for reading; building starts on day 1. The whole team's plan is in `../schedule.md`; the **checkpoints** are what this part must have merged by the end of that day.
+
+| Day | Date | Delivered |
+|---|---|---|
+| — | Sun 11-15 – Fri 11-20 | Exams: no planned work |
+| 6 | Sat 11-21 | Prompts tried on the real LLM (P6); JSON fixes |
+| 7 | Sun 11-22 | With P2: real search; with P4: real `write` · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** against the real P2, P4, P6 and the real LLM; prompts tuned on a few real questions; T24 green; all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Tune `agents.*`; check the time per question |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
 
 | Day | Date | Delivered |
 |---|---|---|

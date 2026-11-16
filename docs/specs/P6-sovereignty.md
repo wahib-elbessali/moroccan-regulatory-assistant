@@ -373,6 +373,21 @@ Day 0 is for reading; building starts on day 1. The whole team's plan is in `../
 
 | Day | Date | Delivered |
 |---|---|---|
+| — | Sun 11-15 – Mon 11-16 | **Checkpoint:** the day-5 items still open merged by midnight, the night of Monday 11-16: `models` service, `OllamaClient`, `HttpModelsClient`, `HttpOCRClient` |
+| — | Tue 11-17 – Fri 11-20 | Exam week: no planned work |
+| 6 | Sat 11-21 | Real models served to P1, P2, P3, P4 |
+| 7 | Sun 11-22 | Leak-test queries (T5–T6) run; offline test (T4) tried · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** offline full flow (T4) green; leak queries (T5–T6) green on the real corpus; all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Whole system on the demo machine, internet off; `docs/hardware.md` (P6-07); tune `leak.*` and `llm.*` |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
+
+| Day | Date | Delivered |
+|---|---|---|
 | 0 | Mon 11-09 | Read the docs; check the demo machine (RAM, GPU, disk) and start `make models` |
 | 1 | Tue 11-10 | **Checkpoint:** `FakeLLMClient`, `FakeModelsClient`, `FakeOCRClient`, `FakeLeakIndex`, `FakeWebSearch`, `FakeWebAgent` + contract tests merged |
 | 2 | Wed 11-11 | **Checkpoint:** `docker-compose.yml` with networks and every service starting (even with placeholder images); `make models` downloads the models; `ocr` serves Tesseract `ara` |

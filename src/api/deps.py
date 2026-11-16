@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import Depends
 
+from src.core.contracts.enums import RoleName
 from src.core.contracts.errors import Forbidden
 from src.core.contracts.models import UserContext
 from src.core.contracts.registry import get_audit
@@ -24,6 +25,9 @@ def require_roles(allowed_roles: list[str]) -> Callable[[UserContext], UserConte
     return _dependency
 
 
+require_admin = require_roles([RoleName.ADMIN.value])
+
+
 def record_audit_event(
     context: UserContext,
     action: str,
@@ -36,5 +40,6 @@ def record_audit_event(
 __all__ = [
     "get_current_user_context",
     "require_roles",
+    "require_admin",
     "record_audit_event",
 ]

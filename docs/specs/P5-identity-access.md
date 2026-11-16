@@ -136,8 +136,9 @@ Anyone can ask for an account; only the admin creates it. The admin keeps `creat
 |---|---|---|
 | `UserContext` | 00-shared §5.1 | Everyone |
 | `get_current_user_context`, `require_roles`, `record_audit_event` | 00-shared §6.1 | Every route |
-| `DocumentRights` (`set_document_roles`, `set_status`, `get_status`, `set_content_hash`, `create_document`) | 00-shared §6.1 | P1 (`create_document`: its command line) |
+| `DocumentRights` (`set_document_roles`, `set_status`, `get_status`, `set_content_hash`, `create_document`) | 00-shared §6.1 | P1 (statuses, duplicate warning, handing over for publication; `create_document` for its command line) |
 | `Audit` (`log_query`, `log_action`) | 00-shared §6.1 | P1, P3, P6 |
+| `audited_stream` | 00-shared §6.1 | P3 (`/ask`) |
 | HTTP API (`/auth`, `/documents`, `/conversations`, `/admin`) | 00-shared §8 | P7 |
 | `registry.py`, user fixtures, `cfg`, logging | this spec, §3.1 | Everyone |
 | `FakeDocumentRights`, `FakeAudit` | 00-shared §9 | P1, P3, P6 |
@@ -530,6 +531,21 @@ Contract tests in `tests/contracts/` run on fake and real: `DocumentRights` (T10
 ## 10. Schedule
 
 Day 0 is for reading; building starts on day 1. The whole team's plan is in `../schedule.md`; the **checkpoints** are what this part must have merged by the end of that day.
+
+| Day | Date | Delivered |
+|---|---|---|
+| — | Sun 11-15 – Mon 11-16 | **Checkpoint:** the day-5 items still open merged by midnight, the night of Monday 11-16: document, admin, account-request and conversation routes, `set_document_roles`, access tests through HTTP |
+| — | Tue 11-17 – Fri 11-20 | Exam week: no planned work |
+| 6 | Sat 11-21 | With P1 and P2: upload → ingestion → publication on the real parts |
+| 7 | Sun 11-22 | With P6: real `set_blocking`; end-to-end test (T39) written · **Checkpoint:** meeting Sunday night |
+| 8 | Mon 11-23 | **Checkpoint:** against the real P1, P2, P6: T7–T10, T17, T39 green (mandatory test a, end-to-end test); all tests green |
+| 9 | Tue 11-24 | **Feature freeze.** Read the first evaluation results; list this part's problems |
+| 10 | Wed 11-25 | Tune this part's values (schedule.md §3) and fix bugs · Demo accounts and roles created on the demo machine |
+| 11 | Thu 11-26 | Tuning and fixes; second evaluation run; **report section** on this part drafted (French) |
+| 12 | Fri 11-27 | Fixes only, each tested on the demo machine; **demo rehearsal 1** |
+| 13 | Sat 11-28 | **Demo rehearsal 2** (morning); everything ready for the submission on Sun 11-29 |
+
+### Previous plan (before exam week)
 
 | Day | Date | Delivered |
 |---|---|---|

@@ -121,6 +121,28 @@ def test_t3_unknown_answer_uses_p3_language(question, language, lecteur_ctx, ins
     )
 
 
+def test_real_writer_works_with_fake_llm_client(sample_chunks, lecteur_ctx, monkeypatch) -> None:
+    source = "La demande doit être déposée avant le 30 juin."
+    fake_llm = FakeLLMClient(
+        replies=[
+            "La demande doit être déposée avant le 30 juin [1].",
+            _verdicts((1, True, 1, source)),
+        ]
+    )
+    monkeypatch.setattr("src.agents.answer.writer.get_llm", lambda: fake_llm)
+
+    answer = real_writer().write(
+        "Quand déposer la demande ?",
+        _passages(sample_chunks, source),
+        [],
+        lecteur_ctx,
+    )
+
+    assert answer.status == AnswerStatus.ANSWERED
+    assert answer.text == "La demande doit être déposée avant le 30 juin [1]."
+    assert answer.citations[0].excerpt == source
+
+
 def test_t4_keeps_supported_claims_and_calls_llm_with_specified_limits(
     sample_chunks, lecteur_ctx, install_llm
 ) -> None:

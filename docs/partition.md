@@ -105,7 +105,7 @@ The building work is split into 7 parts of comparable load, developed in paralle
 - Repository management, handled separately.
 - The evaluation set and metrics (F-EVA).
 
-## PDF requirements not planned for these two weeks
+## PDF requirements not planned
 
 All are S or C; every M requirement is covered.
 

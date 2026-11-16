@@ -22,6 +22,10 @@ data/processed/
 data/indexes/
 storage/
 
+# Frontend dependencies and build output
+node_modules/
+src/ui/dist/
+
 # Editors and OS
 .vscode/
 .idea/

@@ -1,6 +1,6 @@
 # Contributing
 
-How we work on this repository. Read [`docs/architecture.md`](docs/architecture.md), [`docs/specs/00-shared.md`](docs/specs/00-shared.md) and your part's spec in [`docs/specs/`](docs/specs/) first; the two-week plan is in [`docs/schedule.md`](docs/schedule.md).
+How we work on this repository. Read [`docs/architecture.md`](docs/architecture.md), [`docs/specs/00-shared.md`](docs/specs/00-shared.md) and your part's spec in [`docs/specs/`](docs/specs/) first; the plan is in [`docs/schedule.md`](docs/schedule.md).
 
 ## Setup (once)
 
@@ -73,5 +73,5 @@ Each part writes its own fake (`src/core/contracts/fakes/`) and its contract tes
 |---|---|---|
 | `v0.1.0` | 2 (Wed 11-11) | Contracts and fakes merged |
 | `v0.2.0` | 5 (Sat 11-14) | Each part works end to end with fakes |
-| `v0.3.0` | 8 (Tue 11-17) | Full integration, mandatory tests green |
-| `v1.0.0` | 13 (Sun 11-22) | Submission |
+| `v0.3.0` | 8 (Mon 11-23) | Full integration, mandatory tests green |
+| `v1.0.0` | Sun 11-29 | Submission |

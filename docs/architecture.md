@@ -578,7 +578,7 @@ erDiagram
 3. **No code switch at integration.** `config.yaml` selects `fake` or `real` per contract. Moving to the real system changes configuration, not code.
 4. **Files before databases.** Fakes write to plain files (`data/processed/chunks.jsonl`, a JSON status file), which also serve as test data for the next part.
 
-Day 0 (Mon 2026-11-09) is for reading the documents; day 1 is Tue 2026-11-10; submission is on day 13 (Sun 2026-11-22). Checkpoints: **day 2** contracts and fakes merged · **day 5** each part works end to end with fakes · **day 8** full integration, mandatory tests green. The full two-week plan (evaluation, tuning, report, demo rehearsals) is in [`schedule.md`](schedule.md).
+Day 0 (Mon 2026-11-09) is for reading the documents; day 1 is Tue 2026-11-10; Tue 11-17 – Fri 11-20 is exam week, with no planned work; everything is ready on day 13 (Sat 2026-11-28) and submission is on Sun 2026-11-29. Checkpoints: **day 2** contracts and fakes merged · **day 5** each part works end to end with fakes · **day 7** real pairs working · **day 8** full integration, mandatory tests green. The full plan (evaluation, tuning, report, demo rehearsals) is in [`schedule.md`](schedule.md).
 
 ---
 
