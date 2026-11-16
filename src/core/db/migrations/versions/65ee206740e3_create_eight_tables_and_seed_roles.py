@@ -9,10 +9,11 @@ Create Date: 2026-11-10 22:07:15.271575
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy import Boolean, String, Text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import column, table
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "65ee206740e3"

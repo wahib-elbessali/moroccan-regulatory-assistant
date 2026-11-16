@@ -123,13 +123,13 @@ def get_audit_logs(
     logs = db.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100)).all()
     return [
         {
-            "id": str(l.id),
-            "user_id": str(l.user_id) if l.user_id else None,
-            "action": str(l.action),
-            "details": l.details,
-            "timestamp": l.timestamp.isoformat() if l.timestamp else None,
+            "id": str(log.id),
+            "user_id": str(log.user_id) if log.user_id else None,
+            "action": str(log.action),
+            "details": log.details,
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
         }
-        for l in logs
+        for log in logs
     ]
 
 
