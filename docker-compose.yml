@@ -119,16 +119,16 @@ services:
       - ollama_models:/root/.ollama
     # GPU (optional, to test on the demo machine): add `gpus: all`
 
-  models:  # PLACEHOLDER: bge-m3 + bge-reranker-v2-m3 over HTTP (day 3)
-    image: python:3.11-slim
-    working_dir: /tmp
-    command: ["python", "-m", "http.server", "8080"]
+  models:  # bge-m3 + bge-reranker-v2-m3 over HTTP, read from the hf_cache volume (no internet)
+    build: ./services/models
     healthcheck:
       <<: *health
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/')"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/health')"]
+      start_period: 180s  # loading both models takes a while
     networks: [internal]
     volumes:
       - hf_cache:/hf:ro
+      - ./config.yaml:/app/config.yaml:ro  # model names: models.embedding and models.reranker
 
   ocr:  # Tesseract with the `ara` model (and `fra`)
     build: ./services/ocr
