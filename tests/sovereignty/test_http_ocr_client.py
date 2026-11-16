@@ -43,7 +43,7 @@ def test_sends_the_image_as_multipart_to_ocr() -> None:
 
 
 @pytest.mark.parametrize(
-    ("lang", "sent"), [("ar", b"ara"), ("fr", b"fra"), ("en", b"eng"), ("ara+fra", b"ara+fra")]
+    ("lang", "sent"), [("ar", b"ara"), ("fr", b"fra"), ("ara+fra", b"ara+fra")]
 )
 def test_translates_the_language_for_tesseract(lang: str, sent: bytes) -> None:
     ocr = Recorder()

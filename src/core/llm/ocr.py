@@ -15,7 +15,8 @@ from src.core.contracts.errors import ServiceError
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 120.0  # Tesseract can take tens of seconds on a dense scanned page
-TESSERACT_LANGS = {"ar": "ara", "fr": "fra", "en": "eng"}
+# Only the language packs installed in services/ocr/Dockerfile (tesseract-ocr-ara, -fra).
+TESSERACT_LANGS = {"ar": "ara", "fr": "fra"}
 
 
 class HttpOCRClient:
@@ -42,7 +43,7 @@ class HttpOCRClient:
 
         Args:
             image: An encoded PNG or JPEG file.
-            lang: ``ar``, ``fr``, ``en``, or a Tesseract language name.
+            lang: ``ar``, ``fr``, or a Tesseract language name installed in the service.
 
         Raises:
             ServiceError: The service is unreachable, refused the image, or gave a bad answer.
