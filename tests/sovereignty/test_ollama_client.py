@@ -148,6 +148,7 @@ async def test_stream_passes_num_ctx_and_max_tokens() -> None:
         _ndjson({"message": {"content": "x"}, "done": False}, {"error": "out of memory"}),
         _ndjson({"message": {"content": "x"}, "done": False}),  # ends without done
         httpx.Response(200, content=b"not json\n"),
+        _ndjson({"message": {"content": 123}, "done": False}),  # content is not a string
     ],
 )
 async def test_stream_failure_is_a_service_error(response: httpx.Response) -> None:

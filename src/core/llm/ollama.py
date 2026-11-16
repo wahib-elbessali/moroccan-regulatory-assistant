@@ -188,4 +188,6 @@ class OllamaClient:
             raise ServiceError("llm service failed mid-answer")
         message = chunk.get("message") or {}
         piece = message.get("content", "") if isinstance(message, dict) else ""
-        return (piece if isinstance(piece, str) else ""), bool(chunk.get("done"))
+        if not isinstance(piece, str):  # same check as chat(): a malformed chunk is an error
+            raise ServiceError("llm service gave an invalid answer")
+        return piece, bool(chunk.get("done"))
