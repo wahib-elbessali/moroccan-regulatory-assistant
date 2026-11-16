@@ -1,23 +1,5 @@
 .PHONY: models up up-light down test-isolation seed
 
-models:
-	python services/download_models.py
-
-up:
-	docker compose up -d --wait
-
-up-light:
-	MODE=light docker compose up -d --wait
-
-down:
-	docker compose down
-
-test-isolation:
-	pytest tests/sovereignty/test_network_isolation.py -v
-
-seed:
-	docker compose exec api python -m src.ingestion seed.PHONY: models up up-light down test-isolation seed
-
 # Owner of the `upload` rows of data/raw/manifest.csv. document_rights is fake for now, so this
 # development UUID is not checked against a user. Override: `make seed OWNER=<uuid>`.
 OWNER ?= 00000000-0000-0000-0000-000000000001
