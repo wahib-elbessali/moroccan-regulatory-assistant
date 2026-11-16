@@ -10,7 +10,7 @@ may be confidential.
 """
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 
 import httpx
 
@@ -72,7 +72,7 @@ class HttpModelsClient:
             scores.extend(self._call("/rerank", body, "scores", len(batch)))
         return [float(s) for s in scores]
 
-    def _call(self, path: str, body: dict[str, object], key: str, expected: int) -> list:
+    def _call(self, path: str, body: Mapping[str, object], key: str, expected: int) -> list:
         """One request to the service; any failure becomes a ``ServiceError`` with no content."""
         try:
             response = self.client.post(path, json=body)
