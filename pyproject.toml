@@ -9,7 +9,6 @@ description = "Agentic RAG assistant for Moroccan regulation, on Arabic document
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    # API, config, auth (P5)
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
@@ -21,40 +20,16 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    # HTTP clients (P6 and others)
     "httpx>=0.27",
-    # Retrieval (P2)
     "qdrant-client>=1.9",
     "rank-bm25>=0.2.2",
-    # Orchestration (P3)
     "langgraph>=0.2",
-    # Ingestion (P1)
     "pymupdf>=1.24",
     "python-docx>=1.1",
     "beautifulsoup4>=4.12",
     "pillow>=10.3",
-    # Token counting (P6)
     "tokenizers>=0.19",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "pytest-cov>=5.0",
-    "mypy>=1.10",
-    "ruff>=0.5",
-    "black>=24.4",
-    "pre-commit>=3.7",
-    "types-pyyaml",
-]
-
-[tool.setuptools.packages.find]
-include = ["src*"]
-
-[tool.black]
-line-length = 100
-target-version = ["py311"]
 
 [tool.ruff]
 line-length = 100
@@ -62,7 +37,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]  # long lines are left to black
+ignore = ["E501", "B008"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -76,19 +51,3 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra"
-
-[tool.coverage.run]
-source = ["src"]
-branch = true
-
-[tool.coverage.report]
-skip_empty = true
-
-[dependency-groups]
-dev = [
-    "pytest>=9.2.0",
-]
-
-[tool.ruff.lint]
-ignore = ["B008"]
-

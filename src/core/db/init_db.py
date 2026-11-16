@@ -3,10 +3,10 @@
 import os
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, update
 
+from alembic import command
 from src.core.config import cfg
 from src.core.contracts.enums import DocStatus, RoleName
 from src.core.db.models import Document, Role, User
