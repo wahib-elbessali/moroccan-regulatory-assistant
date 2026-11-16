@@ -1,12 +1,13 @@
 from typing import Any
 from uuid import UUID, uuid4
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_context, record_audit_event
+from src.core.contracts.errors import Forbidden, NotFound
 from src.core.contracts.models import UserContext
-from src.core.contracts.errors import NotFound, Forbidden
 from src.core.db.models import Conversation
 from src.core.db.session import get_db
 
@@ -64,7 +65,7 @@ def get_conversation(
         raise NotFound("conversation not found")
     if conv.user_id != ctx.user_id:
         raise Forbidden("access denied")
-    
+
     return {
         "id": str(conv.id),
         "title": str(conv.title) if hasattr(conv, "title") else "Conversation",
@@ -84,7 +85,7 @@ def delete_conversation(
         raise NotFound("conversation not found")
     if conv.user_id != ctx.user_id:
         raise Forbidden("access denied")
-    
+
     db.delete(conv)
     db.commit()
     record_audit_event(ctx, "delete_conversation", {"conversation_id": str(conversation_id)})
@@ -104,7 +105,7 @@ def add_message(
         raise NotFound("conversation not found")
     if conv.user_id != ctx.user_id:
         raise Forbidden("access denied")
-    
+
     content = body.get("content", "")
     return {
         "conversation_id": str(conversation_id),
