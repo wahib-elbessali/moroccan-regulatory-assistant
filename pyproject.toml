@@ -83,3 +83,8 @@ branch = true
 
 [tool.coverage.report]
 skip_empty = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
