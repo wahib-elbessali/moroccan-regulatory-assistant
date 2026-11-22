@@ -27,7 +27,9 @@ def list_documents(
             "doc_id": str(d.id),
             "title": str(d.title) if hasattr(d, "title") else "Untitled",
             "status": str(d.status) if hasattr(d, "status") else "processed",
-            "created_at": d.created_at.isoformat() if hasattr(d, "created_at") and d.created_at else None,
+            "created_at": (
+                d.created_at.isoformat() if hasattr(d, "created_at") and d.created_at else None
+            ),
         }
         for d in docs
     ]
@@ -74,6 +76,8 @@ def delete_document(
     db.commit()
     record_audit_event(ctx, "delete_document", {"doc_id": str(doc_id)})
     return {"doc_id": str(doc_id), "status": "deleted"}
+
+
 @router.put("/{doc_id}/roles")
 def set_document_roles(
     doc_id: UUID,

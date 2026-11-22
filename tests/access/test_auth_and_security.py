@@ -1,4 +1,4 @@
-﻿"""End-to-end security, authentication, RBAC, rights, and middleware tests for P5."""
+"""End-to-end security, authentication, RBAC, rights, and middleware tests for P5."""
 
 from collections.abc import Generator
 from pathlib import Path

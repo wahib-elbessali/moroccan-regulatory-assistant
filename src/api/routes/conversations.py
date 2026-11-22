@@ -26,8 +26,10 @@ def list_conversations(
     return [
         {
             "id": str(c.id),
-            "title": str(c.title) if hasattr(c, "title") and c.title else "Conversation",
-            "created_at": c.created_at.isoformat() if hasattr(c, "created_at") and c.created_at else None,
+            "title": (str(c.title) if hasattr(c, "title") and c.title else "Conversation"),
+            "created_at": (
+                c.created_at.isoformat() if hasattr(c, "created_at") and c.created_at else None
+            ),
         }
         for c in convs
     ]
@@ -69,7 +71,7 @@ def get_conversation(
     return {
         "id": str(conv.id),
         "title": str(conv.title) if hasattr(conv, "title") else "Conversation",
-        "messages": [], # populated via chat/orchestrator if available
+        "messages": [],  # populated via chat/orchestrator if available
     }
 
 
