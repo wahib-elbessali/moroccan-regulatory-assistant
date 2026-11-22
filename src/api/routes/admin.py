@@ -52,7 +52,9 @@ def update_user_role(
         raise NotFound("role not found")
     user.role_id = role.id
     db.commit()
-    record_audit_event(ctx, "update_role", {"target_user_id": str(user_id), "new_role": new_role_name})
+    record_audit_event(
+        ctx, "update_role", {"target_user_id": str(user_id), "new_role": new_role_name}
+    )
     return {"status": "updated"}
 
 
@@ -70,9 +72,12 @@ def update_user_active(
     is_active = body.get("is_active")
     if is_active is None:
         raise InvalidInput("is_active field required")
-    user.is_active = bool(is_active)
+    active_val = bool(is_active)
+    user.is_active = active_val  # type: ignore[assignment]
     db.commit()
-    record_audit_event(ctx, "update_active", {"target_user_id": str(user_id), "is_active": user.is_active})
+    record_audit_event(
+        ctx, "update_active", {"target_user_id": str(user_id), "is_active": active_val}
+    )
     return {"status": "updated"}
 
 
@@ -108,7 +113,7 @@ def update_role_web(
     web_enabled = body.get("web_enabled")
     if web_enabled is None:
         raise InvalidInput("web_enabled field required")
-    role.web_enabled = bool(web_enabled)
+    role.web_enabled = bool(web_enabled)  # type: ignore[assignment]
     db.commit()
     return {"status": "updated"}
 
@@ -120,6 +125,7 @@ def get_audit_logs(
 ) -> list[dict[str, Any]]:
     """Return system audit logs."""
     from src.core.db.models import AuditLog
+
     logs = db.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100)).all()
     return [
         {
@@ -146,7 +152,9 @@ def list_account_requests(
             "username": str(r.username),
             "full_name": str(r.full_name),
             "status": str(r.status),
-            "created_at": r.created_at.isoformat() if hasattr(r, "created_at") and r.created_at else None,
+            "created_at": r.created_at.isoformat()
+            if hasattr(r, "created_at") and r.created_at
+            else None,
         }
         for r in reqs
     ]
@@ -168,6 +176,8 @@ def approve_request(
     default_role = db.scalars(select(Role).where(Role.name == "user")).first()
     if not default_role:
         default_role = db.scalars(select(Role)).first()
+    if not default_role:
+        raise NotFound("default role not found")
 
     new_user = User(
         username=req.username,
@@ -177,7 +187,7 @@ def approve_request(
         role_id=default_role.id,
     )
     db.add(new_user)
-    req.status = AccountRequestStatus.APPROVED.value
+    req.status = AccountRequestStatus.APPROVED.value  # type: ignore[assignment]
     db.commit()
     record_audit_event(ctx, "approve_account_request", {"request_id": str(request_id)})
     return {"status": "approved"}
@@ -193,7 +203,7 @@ def reject_request(
     req = db.get(AccountRequest, request_id)
     if not req:
         raise NotFound("request not found")
-    req.status = AccountRequestStatus.REJECTED.value
+    req.status = AccountRequestStatus.REJECTED.value  # type: ignore[assignment]
     db.commit()
     record_audit_event(ctx, "reject_request", {"request_id": str(request_id)})
     return {"status": "rejected"}
