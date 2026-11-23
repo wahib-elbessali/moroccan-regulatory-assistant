@@ -199,4 +199,3 @@ def delete_document(
 
     record_audit_event(ctx, AuditAction.DOCUMENT_DELETE.value, {"doc_id": doc_id})
     return Response(status_code=204)
-

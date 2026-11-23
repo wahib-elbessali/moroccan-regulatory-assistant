@@ -625,10 +625,11 @@ def test_bm25_receives_the_normalised_tokenised_query(store: QdrantStore) -> Non
     Retrieval(store, bm25, models=HashModels()).search(typed, ctx)
     tokens, role, limit = bm25.calls[0]
 
-    # normalize_ar turns teh marbuta into heh (المادة -> الماده) and tokenize drops the stopword
-    # من, so the tokens are neither the typed words nor a copy of them.
+    # normalize_ar turns teh marbuta into heh (المادة -> الماده), tokenize drops the stopword
+    # من and light_stem removes the article (الماده -> ماده, القانون -> قان), so the tokens are
+    # neither the typed words nor a copy of them.
     assert tokens == tokenize(normalize_ar(typed))
-    assert tokens == ["الماده", "12", "القانون"]
+    assert tokens == ["ماده", "12", "قان"]
     assert "من" not in tokens
     assert (role, limit) == ("lecteur", 30)
 

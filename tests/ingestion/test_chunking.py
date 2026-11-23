@@ -106,7 +106,7 @@ def test_t5_page_boundaries() -> None:
 
 def test_t19_chunk_indexes_and_total() -> None:
     """T19: Document giving 4 chunks has chunk_index 0, 1, 2, 3 and total_chunks = 4 on all."""
-    content = "المادة 1\nنص 1.\nالمادة 2\nنص 2.\nالمادة 3\nنص 3.\nالمادة 4\nنص 4."
+    content = "المادة 1\nنص 1.\n" "المادة 2\nنص 2.\n" "المادة 3\nنص 3.\n" "المادة 4\nنص 4."
     pages = [Page(number=1, text=content)]
     chunks = chunk_document("doc19", pages)
 
@@ -166,7 +166,10 @@ def test_t23_fixed_strategy_sliding_overlap() -> None:
 def test_isolated_heading_word_fused_with_next_line() -> None:
     """Real case (adala_001 P57/P102): 'المادة' alone on line 1, number on line 2 -> 'المادة 179'."""
     content = (
-        "مقدمة سابقة.\nالمادة\n179\nتسري أحكام هذه المادة على تصرفات المحجور بعد بلوغه سن الرشد."
+        "مقدمة سابقة.\n"
+        "المادة\n"
+        "179\n"
+        "تسري أحكام هذه المادة على تصرفات المحجور بعد بلوغه سن الرشد."
     )
     pages = [Page(number=57, text=content)]
     chunks = chunk_document("doc_iso", pages)
@@ -179,7 +182,7 @@ def test_isolated_heading_word_fused_with_next_line() -> None:
 
 def test_preliminary_chapter_hierarchy() -> None:
     """'باب تمهيدي' or 'الباب التمهيدي' is recognized as hierarchy level."""
-    content = "باب تمهيدي: أحكام عامة\nالمادة 1\nيسمى هذا القانون مدونة التجارة."
+    content = "باب تمهيدي: أحكام عامة\n" "المادة 1\n" "يسمى هذا القانون مدونة التجارة."
     pages = [Page(number=1, text=content)]
     chunks = chunk_document("doc_prelim", pages)
 

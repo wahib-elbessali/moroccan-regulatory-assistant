@@ -345,4 +345,3 @@ def test_conversations_persistence_and_ownership(http_env: dict[str, Any]) -> No
     conv_row = db.get(Conversation, UUID(conv_id))
     assert conv_row is not None
     assert len(conv_row.messages) == 1
-

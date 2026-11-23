@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from src.agents import web
 from src.core.contracts.errors import LeakBlocked, ServiceError
