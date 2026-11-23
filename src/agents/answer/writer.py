@@ -52,9 +52,9 @@ def _writer_messages(question: str, sources: list[Source], language: str) -> lis
 
 
 def _count_tokens(llm: LLMClient, messages: list[dict[str, str]], reply: str) -> int:
-    text = "\n".join(message["content"] for message in messages) + "\n" + reply
     try:
-        return int(llm.count_tokens(text))
+        message_tokens = sum(int(llm.count_tokens(message["content"])) for message in messages)
+        return message_tokens + int(llm.count_tokens(reply))
     except Exception:
         return 0
 
@@ -81,7 +81,9 @@ class RealWriter(Writer):
         emit: Callable[[ProcessEvent], None] | None = None,
     ) -> Answer:
         started = perf_counter()
-        language = detect_language(question)  # P3 owns this shared detector.
+        language = "fr"  # Safe value for the error log if P3's detector raises.
+        answer: Answer | None = None
+        final_status = "error"
         metrics: dict[str, int | bool] = {
             "source_count": 0,
             "claim_count": 0,
@@ -89,106 +91,122 @@ class RealWriter(Writer):
             "judge_fallback": False,
             "writer_tokens": 0,
             "judge_tokens": 0,
+            "language_ms": 0,
             "source_build_ms": 0,
             "writer_ms": 0,
+            "writer_token_count_ms": 0,
             "split_ms": 0,
             "judge_ms": 0,
             "citation_ms": 0,
         }
 
-        def finish(answer: Answer, status: str | None = None) -> Answer:
+        def finish(result: Answer) -> Answer:
+            nonlocal answer, final_status
+            answer = result
+            final_status = str(result.status)
+            return result
+
+        try:
+            stage = perf_counter()
+            language = detect_language(question)  # P3 owns this shared detector.
+            metrics["language_ms"] = round((perf_counter() - stage) * 1000)
+
+            if not passages and not web:
+                return finish(_unknown(language))
+
+            stage = perf_counter()
+            sources = build_sources(passages, web)
+            metrics["source_count"] = len(sources)
+            metrics["source_build_ms"] = round((perf_counter() - stage) * 1000)
+
+            stage = perf_counter()
+            try:
+                llm = get_llm()
+                messages = _writer_messages(question, sources, language)
+                draft = llm.chat(
+                    messages,
+                    max_tokens=int(setting("answer", "max_answer_tokens", 800)),
+                ).strip()
+            except Exception:
+                metrics["writer_ms"] = round((perf_counter() - stage) * 1000)
+                raise ServiceError("Writer service unavailable") from None
+            metrics["writer_ms"] = round((perf_counter() - stage) * 1000)
+
+            stage = perf_counter()
+            metrics["writer_tokens"] = _count_tokens(llm, messages, draft)
+            metrics["writer_token_count_ms"] = round((perf_counter() - stage) * 1000)
+            if draft == "NO_ANSWER" or not draft:
+                return finish(_unknown(language))
+
+            stage = perf_counter()
+            claims = split_claims(draft, {source.number for source in sources})
+            metrics["claim_count"] = len(claims)
+            metrics["split_ms"] = round((perf_counter() - stage) * 1000)
+
+            judge_metrics = judge(
+                claims,
+                sources,
+                llm,
+                max_tokens=int(setting("answer", "max_judge_tokens", 600)),
+            )
+            metrics["judge_ms"] = judge_metrics.duration_ms
+            metrics["judge_tokens"] = judge_metrics.tokens_used
+            metrics["judge_fallback"] = judge_metrics.fallback_used
+            kept = [claim for claim in claims if claim.supported]
+            metrics["supported_count"] = len(kept)
+
+            if emit is not None:
+                emit(
+                    ProcessEvent(
+                        step=StepType.VERIFY,
+                        data={
+                            "supported": len(kept),
+                            "total": len(claims),
+                            "reasons": [
+                                claim.reason
+                                for claim in claims
+                                if not claim.supported and claim.reason
+                            ],
+                        },
+                    )
+                )
+            if not kept:
+                return finish(_unknown(language))
+
+            stage = perf_counter()
+            answer_text, citations = renumber(kept, sources)
+            metrics["citation_ms"] = round((perf_counter() - stage) * 1000)
+            if not citations:
+                return finish(_unknown(language))
+
+            confidence = round(len(kept) / len(claims), 2)
+            all_web = all(citation.url is not None for citation in citations)
+            if all_web:
+                confidence = min(confidence, float(setting("answer", "web_confidence_cap", 0.5)))
+            if confidence < float(setting("agents", "confidence_unknown_below", 0.4)):
+                return finish(_unknown(language))
+
+            if any(citation.url is not None for citation in citations):
+                notice = WEB_ONLY[language] if all_web else WEB_PART[language]
+                answer_text = f"{notice}\n{answer_text}"
+            return finish(
+                Answer(
+                    status=AnswerStatus.ANSWERED,
+                    text=answer_text,
+                    citations=citations,
+                    confidence=confidence,
+                    language=language,
+                )
+            )
+        finally:
             payload = {
                 "request_id": str(ctx.request_id),
                 **metrics,
-                "status": status or answer.status,
-                "confidence": answer.confidence,
+                "status": final_status,
+                "confidence": answer.confidence if answer is not None else 0.0,
                 "total_ms": round((perf_counter() - started) * 1000),
             }
             _LOGGER.info(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-            return answer
-
-        if not passages and not web:
-            return finish(_unknown(language))
-
-        stage = perf_counter()
-        sources = build_sources(passages, web)
-        metrics["source_count"] = len(sources)
-        metrics["source_build_ms"] = round((perf_counter() - stage) * 1000)
-
-        stage = perf_counter()
-        try:
-            llm = get_llm()
-            messages = _writer_messages(question, sources, language)
-            draft = llm.chat(
-                messages,
-                max_tokens=int(setting("answer", "max_answer_tokens", 800)),
-            ).strip()
-        except Exception:
-            metrics["writer_ms"] = round((perf_counter() - stage) * 1000)
-            finish(_unknown(language), status="error")
-            raise ServiceError("Writer service unavailable") from None
-        metrics["writer_ms"] = round((perf_counter() - stage) * 1000)
-        metrics["writer_tokens"] = _count_tokens(llm, messages, draft)
-        if draft == "NO_ANSWER" or not draft:
-            return finish(_unknown(language))
-
-        stage = perf_counter()
-        claims = split_claims(draft, {source.number for source in sources})
-        metrics["claim_count"] = len(claims)
-        metrics["split_ms"] = round((perf_counter() - stage) * 1000)
-
-        judge_metrics = judge(
-            claims,
-            sources,
-            llm,
-            max_tokens=int(setting("answer", "max_judge_tokens", 600)),
-        )
-        metrics["judge_ms"] = judge_metrics.duration_ms
-        metrics["judge_tokens"] = judge_metrics.tokens_used
-        metrics["judge_fallback"] = judge_metrics.fallback_used
-        kept = [claim for claim in claims if claim.supported]
-        metrics["supported_count"] = len(kept)
-
-        if emit is not None:
-            emit(
-                ProcessEvent(
-                    step=StepType.VERIFY,
-                    data={
-                        "supported": len(kept),
-                        "total": len(claims),
-                        "reasons": [
-                            claim.reason for claim in claims if not claim.supported and claim.reason
-                        ],
-                    },
-                )
-            )
-        if not kept:
-            return finish(_unknown(language))
-
-        stage = perf_counter()
-        answer_text, citations = renumber(kept, sources)
-        metrics["citation_ms"] = round((perf_counter() - stage) * 1000)
-        if not citations:
-            return finish(_unknown(language))
-
-        confidence = round(len(kept) / len(claims), 2)
-        all_web = all(citation.url is not None for citation in citations)
-        if all_web:
-            confidence = min(confidence, float(setting("answer", "web_confidence_cap", 0.5)))
-        if confidence < float(setting("agents", "confidence_unknown_below", 0.4)):
-            return finish(_unknown(language))
-
-        if any(citation.url is not None for citation in citations):
-            notice = WEB_ONLY[language] if all_web else WEB_PART[language]
-            answer_text = f"{notice}\n{answer_text}"
-        answer = Answer(
-            status=AnswerStatus.ANSWERED,
-            text=answer_text,
-            citations=citations,
-            confidence=confidence,
-            language=language,
-        )
-        return finish(answer)
 
 
 def real_writer() -> Writer:

@@ -124,9 +124,9 @@ def _word_check(claim: Claim, sources: list[Source], min_chars: int) -> None:
 
 
 def _count_tokens(llm: LLMClient, messages: list[dict[str, str]], reply: str) -> int:
-    text = "\n".join(message["content"] for message in messages) + "\n" + reply
     try:
-        return int(llm.count_tokens(text))
+        message_tokens = sum(int(llm.count_tokens(message["content"])) for message in messages)
+        return message_tokens + int(llm.count_tokens(reply))
     except Exception:
         return 0
 
