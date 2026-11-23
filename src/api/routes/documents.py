@@ -3,18 +3,17 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_context, record_audit_event
 from src.core.contracts.enums import AuditAction, DocStatus, RoleName
-from src.core.contracts.errors import Conflict, Forbidden, InvalidInput, NotFound
+from src.core.contracts.errors import Conflict, InvalidInput, NotFound
 from src.core.contracts.models import DocumentMeta, DocumentResponse, UserContext
 from src.core.contracts.registry import (
     get_document_rights,
     get_ingestion,
-    get_leak_index,
     get_retrieval,
 )
 from src.core.db.models import Document, DocumentRole, Role
@@ -162,7 +161,7 @@ def get_document_status(
     if doc is None:
         raise NotFound("document not found")
     if not _can_access_document(doc, ctx):
-        raise Forbidden("forbidden")
+        raise NotFound("document not found")
 
     status = str(doc.status) if doc.status else get_document_rights().get_status(doc_id)
     return {
@@ -172,28 +171,24 @@ def get_document_status(
     }
 
 
-@router.delete("/{doc_id}")
+@router.delete("/{doc_id}", status_code=204)
 def delete_document(
     doc_id: str,
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(get_current_user_context),  # noqa: B008
-) -> dict[str, Any]:
-    """Delete a document from index, leak index, storage, and DB (P5-29, P5-30, P5-30b)."""
+) -> Response:
+    """Delete a document via P1 ingestion after hiding, then remove storage and DB row."""
     doc = db.scalars(select(Document).where(Document.id == doc_id)).one_or_none()
     if doc is None:
         raise NotFound("document not found")
     if not _can_delete_document(doc, ctx):
-        raise Forbidden("forbidden")
+        raise NotFound("document not found")
 
     if str(doc.status) in _IN_PROGRESS_STATUSES:
         raise Conflict("document is being processed")
 
-    retrieval = get_retrieval()
-    leak_index = get_leak_index()
-
-    retrieval.hide(doc_id)
-    retrieval.delete(doc_id)
-    leak_index.delete(doc_id)
+    get_retrieval().hide(doc_id)
+    get_ingestion().delete(doc_id)
 
     for upload_candidate in Path("storage/uploads").glob(f"{doc_id}.*"):
         upload_candidate.unlink(missing_ok=True)
@@ -203,7 +198,5 @@ def delete_document(
     db.commit()
 
     record_audit_event(ctx, AuditAction.DOCUMENT_DELETE.value, {"doc_id": doc_id})
-    return {
-        "doc_id": doc_id,
-        "status": DocStatus.DELETED.value if hasattr(DocStatus, "DELETED") else "deleted",
-    }
+    return Response(status_code=204)
+

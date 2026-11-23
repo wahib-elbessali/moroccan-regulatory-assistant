@@ -52,6 +52,28 @@ class _SpyRetrieval:
         self.deleted_docs.append(doc_id)
 
 
+class _SpyIngestion:
+    def __init__(self) -> None:
+        self.deleted_docs: list[str] = []
+
+    def ingest(self, *args: Any, **kwargs: Any) -> None:
+        _ = (args, kwargs)
+
+    def delete(self, doc_id: str) -> None:
+        self.deleted_docs.append(doc_id)
+
+
+class _SpyIngestion:
+    def __init__(self) -> None:
+        self.deleted_docs: list[str] = []
+
+    def ingest(self, *args: Any, **kwargs: Any) -> None:
+        _ = (args, kwargs)
+
+    def delete(self, doc_id: str) -> None:
+        self.deleted_docs.append(doc_id)
+
+
 class _SpyLeakIndex:
     def __init__(self) -> None:
         self.deleted_docs: list[str] = []
@@ -128,8 +150,10 @@ def http_env(
     db.commit()
 
     spy_retrieval = _SpyRetrieval()
+    spy_ingestion = _SpyIngestion()
     spy_leak = _SpyLeakIndex()
     registry.override("retrieval", spy_retrieval)
+    registry.override("ingestion", spy_ingestion)
     registry.override("leak_index", spy_leak)
 
     monkeypatch.setattr(session_mod, "SessionLocal", TestingSessionLocal)
@@ -159,6 +183,7 @@ def http_env(
             "editeur": editeur_ctx,
             "admin": admin_ctx,
             "retrieval": spy_retrieval,
+            "ingestion": spy_ingestion,
             "leak": spy_leak,
         }
     finally:
@@ -209,16 +234,16 @@ def test_documents_sha256_id_visibility_and_delete(http_env: dict[str, Any]) -> 
     assert private_doc_id not in doc_ids
 
     forbid_priv_status = client.get(f"/documents/{private_doc_id}/status")
-    assert forbid_priv_status.status_code == 403
+    assert forbid_priv_status.status_code == 404
 
     forbid_del = client.delete(f"/documents/{sha_doc_id}")
-    assert forbid_del.status_code == 403
+    assert forbid_del.status_code == 404
 
     set_ctx(http_env["admin"])
     del_res = client.delete(f"/documents/{sha_doc_id}")
-    assert del_res.status_code == 200
-    assert sha_doc_id in http_env["retrieval"].deleted_docs
-    assert sha_doc_id in http_env["leak"].deleted_docs
+    assert del_res.status_code == 204
+    assert sha_doc_id in http_env["ingestion"].deleted_docs
+    assert sha_doc_id in http_env["ingestion"].deleted_docs
 
 
 def test_admin_account_request_approve_and_reject(http_env: dict[str, Any]) -> None:
@@ -320,3 +345,4 @@ def test_conversations_persistence_and_ownership(http_env: dict[str, Any]) -> No
     conv_row = db.get(Conversation, UUID(conv_id))
     assert conv_row is not None
     assert len(conv_row.messages) == 1
+
