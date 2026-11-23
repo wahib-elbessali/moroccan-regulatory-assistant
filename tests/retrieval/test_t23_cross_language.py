@@ -16,8 +16,8 @@ skip with what to run.
     #   P2_T23_PUBLISH=1 pytest tests/retrieval/test_t23_cross_language.py -v
     pytest tests/retrieval/test_t23_cross_language.py -v
 
-The question and the expected articles are the ones from the manual run of Sat 11-21 recorded in
-``P2-C-fatima.md``: "Quelles sont les conditions de la kafala d'un enfant abandonné ?" returned
+The question and the expected articles are the ones from the manual run of Sat 11-21:
+"Quelles sont les conditions de la kafala d'un enfant abandonné ?" returned
 المادة 12, 9 and 17 of law 15.01. That run is **not** evidence for this test — it is only where
 the expectation comes from.
 
@@ -160,7 +160,7 @@ SKIP_REASONS = {
     ),
     "corpus_hidden": (
         f"law {LAW_NUMBER} is indexed but still hidden. P5's real publication is not wired yet "
-        "(see P2-common.md: the fake document_rights never calls update_roles or show), so "
+        "(the fake document_rights never calls update_roles or show), so "
         "publish it by hand, or re-run with P2_T23_PUBLISH=1"
     ),
     "models_down": "P6's models service did not answer: bge-m3 is needed for cross-language search",
