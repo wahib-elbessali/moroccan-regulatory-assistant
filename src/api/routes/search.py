@@ -25,9 +25,9 @@ Nothing is audited: ``AuditAction`` (00-shared §4) has no value for a search �
 belongs to ``/ask`` — and no requirement asks for one.
 
 The handler is a plain ``def``. ``search`` is synchronous and slow (it waits on Qdrant and on
-P6's models service; the Sat 11-21 run measured a median of 53 s), so FastAPI runs it in a
-worker thread. An ``async def`` would hold the event loop for that whole time and freeze every
-other request, ``/health`` and ``/ask``'s stream included.
+P6's models service), so FastAPI runs it in a worker thread. An ``async def`` would hold the
+event loop for that whole time and freeze every other request, ``/health`` and ``/ask``'s
+stream included.
 """
 
 from fastapi import APIRouter, Depends
