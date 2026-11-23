@@ -307,14 +307,7 @@ def test_remove_headers_footers_repeated_lines() -> None:
 def test_remove_headers_footers_number_only_middle_preserved() -> None:
     """Number-only lines in the middle of page body are preserved; bottom line removed."""
     page_text = (
-        "بداية النص القانوني\n"
-        "المادة 1\n"
-        "1\n"
-        "نص البند الأول\n"
-        "2\n"
-        "نص البند الثاني\n"
-        "خاتمة الفقرة هنا\n"
-        "12"
+        "بداية النص القانوني\nالمادة 1\n1\nنص البند الأول\n2\nنص البند الثاني\nخاتمة الفقرة هنا\n12"
     )
     pages = [Page(number=1, text=page_text)]
     cleaned = remove_headers_footers(pages)

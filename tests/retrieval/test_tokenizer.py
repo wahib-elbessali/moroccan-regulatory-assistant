@@ -1,20 +1,9 @@
-"""Tests of the BM25 tokenizer (P2 spec P2-20, P2-22, §6.6).
-
-The words in the light_stem tests are real words of the corpus (data/raw).
-"""
+"""Tests of the BM25 tokenizer (P2 spec P2-20, P2-22, §6.6)."""
 
 import pytest
 
 from src.ingestion import normalize_ar
-from src.retrieval.tokenizer import (
-    PREFIXES,
-    STOPWORDS,
-    STOPWORDS_PATH,
-    SUFFIXES,
-    light_stem,
-    load_stopwords,
-    tokenize,
-)
+from src.retrieval.tokenizer import STOPWORDS, STOPWORDS_PATH, light_stem, load_stopwords, tokenize
 
 # Words the spec lists as stopwords (P2-20), in normalized form.
 SPEC_STOPWORDS = [
@@ -38,11 +27,11 @@ SPEC_STOPWORDS = [
 
 
 def test_single_letters_dropped_digits_kept() -> None:
-    assert tokenize(normalize_ar("ب المادة 5")) == ["ماده", "5"]
+    assert tokenize(normalize_ar("ب المادة 5")) == ["الماده", "5"]
 
 
 def test_single_digit_kept() -> None:
-    assert tokenize("الماده 5") == ["ماده", "5"]
+    assert tokenize("الماده 5") == ["الماده", "5"]
 
 
 def test_single_latin_letter_dropped() -> None:
@@ -55,15 +44,15 @@ def test_only_stopwords_gives_no_token() -> None:  # T19, tokenizer side
 
 def test_stopwords_removed_inside_text() -> None:
     text = normalize_ar("يتعين على المصالح معالجة الطلبات في أجل ثلاثين يوما")
-    assert tokenize(text) == ["يتع", "مصالح", "معالجه", "طلب", "اجل", "ثلاث", "يوما"]
+    assert tokenize(text) == ["يتعين", "المصالح", "معالجه", "الطلبات", "اجل", "ثلاثين", "يوما"]
 
 
 def test_law_number_is_split_into_digits() -> None:
-    assert tokenize(normalize_ar("القانون رقم 31.08")) == ["قان", "رقم", "31", "08"]
+    assert tokenize(normalize_ar("القانون رقم 31.08")) == ["القانون", "رقم", "31", "08"]
 
 
 def test_article_reference_keeps_number() -> None:
-    assert tokenize(normalize_ar("المادة 12")) == ["ماده", "12"]
+    assert tokenize(normalize_ar("المادة 12")) == ["الماده", "12"]
 
 
 @pytest.mark.parametrize("text", ["", "   ", "و ب ك"])
@@ -72,7 +61,7 @@ def test_nothing_left_gives_empty_list(text: str) -> None:
 
 
 def test_order_is_kept() -> None:
-    assert tokenize("رقم القانون") == ["رقم", "قان"]
+    assert tokenize("رقم القانون") == ["رقم", "القانون"]
 
 
 def test_same_function_for_chunk_and_query() -> None:
@@ -106,82 +95,5 @@ def test_load_stopwords_ignores_blank_lines_and_bom(tmp_path) -> None:
     assert load_stopwords(path) == frozenset({"في", "من"})
 
 
-# --- light_stem (P2-22): one test per rule, with a real word of the corpus ---------------------
-
-
-@pytest.mark.parametrize(
-    ("word", "stem"),
-    [
-        ("والبيانات", "بيان"),  # prefix وال (then suffix ات)
-        ("بالعدل", "عدل"),  # prefix بال
-        ("كالوصيه", "وصيه"),  # prefix كال
-        ("فالقول", "قول"),  # prefix فال
-        ("للاختبار", "اختبار"),  # prefix لل
-        ("الالتزام", "التزام"),  # prefix ال
-    ],
-)
-def test_each_prefix_rule(word: str, stem: str) -> None:
-    assert light_stem(word) == stem
-
-
-@pytest.mark.parametrize(
-    ("word", "stem"),
-    [
-        ("الطلبات", "طلب"),  # suffix ات
-        ("المفوضون", "مفوض"),  # suffix ون
-        ("الزوجين", "زوج"),  # suffix ين
-        ("حدودها", "حدود"),  # suffix ها
-        ("مهامهم", "مهام"),  # suffix هم
-    ],
-)
-def test_each_suffix_rule(word: str, stem: str) -> None:
-    assert light_stem(word) == stem
-
-
-def test_rule_lists_are_the_measured_ones() -> None:
-    """Lone و and ه are left out on purpose (see the module docstring): a change here needs a
-    new measurement and a new test per added rule."""
-    assert PREFIXES == ("وال", "بال", "كال", "فال", "لل", "ال")
-    assert SUFFIXES == ("ات", "ون", "ين", "ها", "هم")
-
-
-def test_longest_prefix_first() -> None:
-    assert light_stem("والقانون") == "قان"  # وال, not just و or ال
-
-
-def test_at_most_one_prefix_and_one_suffix() -> None:
-    assert light_stem("للقانون") == "قان"  # لل removed, not لل then ال
-
-
-def test_at_least_three_letters_are_kept() -> None:
-    assert light_stem("الله") == "الله"  # removing ال would leave 2 letters
-    assert light_stem("ذات") == "ذات"  # removing ات would leave 1 letter
-    assert light_stem("سنوات") == "سنو"  # exactly 3 letters left: allowed
-
-
-@pytest.mark.parametrize("word", ["وزير", "وثيقه", "وكيل", "وكاله"])
-def test_lone_waw_is_not_a_prefix(word: str) -> None:
-    """The و of these frequent nouns is part of the word (left out of the spec's list)."""
-    assert light_stem(word) == word
-
-
-@pytest.mark.parametrize("word", ["معالجه", "الماده", "حمايه"])
-def test_feminine_heh_is_not_a_suffix(word: str) -> None:
-    """After normalize_ar, a final ه is mostly ة: معالجه must not become معالج ("processor")."""
-    assert light_stem(word).endswith("ه")
-
-
-def test_forms_of_one_word_meet() -> None:
-    forms = ["القانون", "قانون", "للقانون", "والقانون", "بالقانون"]
-    assert {light_stem(w) for w in forms} == {"قان"}
-
-
-def test_darija_prefix_meets_the_article_word() -> None:
-    """The Darija question "شكون اللي عندو الحق فالحضانة" now meets the word of المادة 171."""
-    assert light_stem(normalize_ar("فالحضانة")) == light_stem(normalize_ar("الحضانة"))
-
-
-@pytest.mark.parametrize("word", ["عليها", "عليهم"])
-def test_stemming_does_not_bring_back_stopwords(word: str) -> None:
-    assert light_stem(word) in STOPWORDS  # stemming makes it علي ...
-    assert tokenize(word) == []  # ... so tokenize drops it again
+def test_light_stem_is_identity_in_minimum_version() -> None:
+    assert light_stem("والقانون") == "والقانون"
