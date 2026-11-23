@@ -111,6 +111,25 @@ def test_t21_llm_narrator_falls_back_to_template_when_stream_raises(monkeypatch)
     assert _collect(LLMNarrator(), event, "fr") == ["Recherche « test » : 2 passage(s) trouvé(s)."]
 
 
+def test_llm_narrator_silently_stops_when_template_fallback_fails(monkeypatch) -> None:
+    class BrokenStream:
+        def stream(self, messages, *, model=None, max_tokens=None) -> AsyncIterator[str]:
+            async def generate() -> AsyncIterator[str]:
+                raise RuntimeError("stream unavailable")
+                yield ""
+
+            return generate()
+
+    def broken_template(event: ProcessEvent, language: str) -> str:
+        raise RuntimeError("template unavailable")
+
+    monkeypatch.setattr("src.agents.answer.narrator.get_llm", lambda: BrokenStream())
+    monkeypatch.setattr("src.agents.answer.narrator.render_template", broken_template)
+    event = ProcessEvent(step=StepType.SEARCH, data={"query": "test", "count": 2, "titles": []})
+
+    assert _collect(LLMNarrator(), event, "fr") == []
+
+
 def test_llm_narrator_streams_with_configured_model_and_token_limit(monkeypatch) -> None:
     class RecordingStream:
         def __init__(self) -> None:
@@ -145,6 +164,19 @@ def test_llm_narrator_streams_with_configured_model_and_token_limit(monkeypatch)
     assert "French" in messages[0]["content"]
     assert '"step":"search"' in messages[1]["content"]
     assert '"count":2' in messages[1]["content"]
+    assert "one or two short sentences" in messages[0]["content"]
+    assert "Do not answer the user's question" in messages[0]["content"]
+    assert "do not state any legal fact" in messages[0]["content"]
+
+
+def test_llm_narrator_streams_using_shared_fake_llm_client(monkeypatch) -> None:
+    fake_llm = FakeLLMClient(default_reply="Je prépare la recherche.")
+    monkeypatch.setattr("src.agents.answer.narrator.get_llm", lambda: fake_llm)
+    event = ProcessEvent(step=StepType.SEARCH, data={"query": "test", "count": 2, "titles": []})
+
+    pieces = _collect(LLMNarrator(), event, "fr")
+
+    assert "".join(pieces) == "Je prépare la recherche."
 
 
 def test_t22_real_narrator_selects_template_in_light_mode(monkeypatch) -> None:

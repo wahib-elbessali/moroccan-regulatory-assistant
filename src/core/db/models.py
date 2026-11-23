@@ -177,7 +177,11 @@ class AuditLog(Base):
 
     __tablename__ = "audit_log"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     request_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(
         UUID(as_uuid=True),
@@ -235,7 +239,11 @@ class ConversationMessage(Base):
 
     __tablename__ = "conversation_messages"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     conversation_id = Column(
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="CASCADE"),
