@@ -3,20 +3,32 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_context, record_audit_event
-from src.core.contracts.enums import DocStatus, RoleName
-from src.core.contracts.errors import Forbidden, InvalidInput, NotFound
+from src.core.contracts.enums import AuditAction, DocStatus, RoleName
+from src.core.contracts.errors import Conflict, Forbidden, InvalidInput, NotFound
 from src.core.contracts.models import DocumentMeta, DocumentResponse, UserContext
-from src.core.contracts.registry import get_document_rights, get_leak_index, get_retrieval
-from src.core.db.models import Document
+from src.core.contracts.registry import (
+    get_document_rights,
+    get_ingestion,
+    get_leak_index,
+    get_retrieval,
+)
+from src.core.db.models import Document, DocumentRole, Role
 from src.core.db.rights import list_visible_documents
 from src.core.db.session import get_db
+from src.core.security import validate_roles
 
 router = APIRouter()
+
+_IN_PROGRESS_STATUSES = {
+    DocStatus.RECEIVED.value,
+    DocStatus.EXTRACTING.value,
+    DocStatus.CHUNKED.value,
+}
 
 
 def _can_access_document(doc: Document, ctx: UserContext) -> bool:
@@ -29,9 +41,9 @@ def _can_access_document(doc: Document, ctx: UserContext) -> bool:
 
 
 def _can_delete_document(doc: Document, ctx: UserContext) -> bool:
-    if ctx.role == RoleName.ADMIN.value:
-        return True
-    return doc.owner_id is not None and UUID(str(doc.owner_id)) == ctx.user_id
+    if doc.owner_id is not None:
+        return UUID(str(doc.owner_id)) == ctx.user_id
+    return ctx.role in (RoleName.ADMIN.value, RoleName.EDITEUR.value)
 
 
 def _to_document_response(doc: Document, ctx: UserContext) -> DocumentResponse:
@@ -64,18 +76,19 @@ def list_documents(
     return [_to_document_response(doc, ctx) for doc in docs]
 
 
-@router.post("", response_model=DocumentResponse, status_code=201)
-@router.post("/", response_model=DocumentResponse, status_code=201)
+@router.post("", status_code=202)
+@router.post("/", status_code=202)
 async def upload_document(
+    background_tasks: BackgroundTasks,  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     title: str | None = Form(default=None),  # noqa: B008
     source: str | None = Form(default=None),  # noqa: B008
     date: str | None = Form(default=None),  # noqa: B008
-    private: bool = Form(default=False),  # noqa: B008
+    roles: list[str] = Form(default=[]),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(get_current_user_context),  # noqa: B008
-) -> DocumentResponse:
-    """Upload a document and persist its metadata row (P5-24, P5-25)."""
+) -> dict[str, Any]:
+    """Upload a document, schedule background ingestion, and return 202 (P5-24, P5-25)."""
     file_name = file.filename or ""
     if not file_name.strip():
         raise InvalidInput("missing filename")
@@ -85,12 +98,16 @@ async def upload_document(
     if not clean_title:
         raise InvalidInput("title cannot be empty")
 
-    if private:
-        owner_id: UUID | None = ctx.user_id
+    clean_roles = [r.strip() for r in roles if r and r.strip()]
+    if ctx.role == RoleName.EDITEUR.value:
+        if not clean_roles:
+            raise InvalidInput("editeur must specify at least one role")
+        owner_id: UUID | None = None
     else:
-        if ctx.role not in (RoleName.ADMIN.value, RoleName.EDITEUR.value):
-            raise Forbidden("only admin or editeur can upload corpus documents")
-        owner_id = None
+        owner_id = ctx.user_id
+        clean_roles = []
+
+    validated_roles = validate_roles(clean_roles, private=(owner_id is not None))
 
     meta = DocumentMeta(
         title=clean_title,
@@ -99,7 +116,7 @@ async def upload_document(
         date=date,
     )
 
-    doc_id, _stored_path = get_document_rights().create_document(
+    doc_id, stored_path = get_document_rights().create_document(
         file_bytes=file_bytes,
         file_name=file_name,
         meta=meta,
@@ -107,10 +124,31 @@ async def upload_document(
         uploaded_by=ctx.user_id,
     )
 
+    if validated_roles:
+        role_rows = list(db.scalars(select(Role).where(Role.name.in_(validated_roles))).all())
+        if len(role_rows) != len(validated_roles):
+            raise InvalidInput("unknown role in roles list")
+        db.execute(delete(DocumentRole).where(DocumentRole.document_id == doc_id))
+        for role_row in role_rows:
+            db.add(DocumentRole(document_id=doc_id, role_id=role_row.id))
+        db.commit()
+
     doc = db.scalars(select(Document).where(Document.id == doc_id)).one_or_none()
     if doc is None:
         raise NotFound("document not found")
-    return _to_document_response(doc, ctx)
+
+    background_tasks.add_task(
+        get_ingestion().ingest,
+        doc_id,
+        stored_path,
+        meta,
+        validated_roles,
+        owner_id,
+    )
+    return {
+        "doc_id": str(doc.id),
+        "status": str(doc.status),
+    }
 
 
 @router.get("/{doc_id}/status")
@@ -140,29 +178,31 @@ def delete_document(
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(get_current_user_context),  # noqa: B008
 ) -> dict[str, Any]:
-    """Delete a document from DB, retrieval index, and leak index (P5-29)."""
+    """Delete a document from index, leak index, storage, and DB (P5-29, P5-30, P5-30b)."""
     doc = db.scalars(select(Document).where(Document.id == doc_id)).one_or_none()
     if doc is None:
         raise NotFound("document not found")
     if not _can_delete_document(doc, ctx):
         raise Forbidden("forbidden")
 
-    try:
-        get_retrieval().delete(doc_id)
-    except Exception:
-        pass
+    if str(doc.status) in _IN_PROGRESS_STATUSES:
+        raise Conflict("document is being processed")
 
-    try:
-        get_leak_index().delete(doc_id)
-    except Exception:
-        pass
+    retrieval = get_retrieval()
+    leak_index = get_leak_index()
+
+    retrieval.hide(doc_id)
+    retrieval.delete(doc_id)
+    leak_index.delete(doc_id)
 
     for upload_candidate in Path("storage/uploads").glob(f"{doc_id}.*"):
         upload_candidate.unlink(missing_ok=True)
 
+    db.execute(delete(DocumentRole).where(DocumentRole.document_id == doc_id))
     db.delete(doc)
     db.commit()
-    record_audit_event(ctx, "delete_document", {"doc_id": doc_id})
+
+    record_audit_event(ctx, AuditAction.DOCUMENT_DELETE.value, {"doc_id": doc_id})
     return {
         "doc_id": doc_id,
         "status": DocStatus.DELETED.value if hasattr(DocStatus, "DELETED") else "deleted",

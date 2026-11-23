@@ -34,21 +34,21 @@ def test_sample_chunks_all_valid_chunks(sample_chunks: list[Chunk]) -> None:
         assert chunk.page_start <= chunk.page_end
         assert chunk.page_start >= 1
         assert chunk.text.strip(), "chunk text must not be empty"
-        assert chunk.text_normalized == normalize_ar(chunk.text), (
-            f"text_normalized must match normalize_ar(text) for chunk {chunk.chunk_id}"
-        )
-        assert chunk.language == detect_language(chunk.text), (
-            f"Chunk {chunk.chunk_id} language={chunk.language} differs from detect_language"
-        )
+        assert chunk.text_normalized == normalize_ar(
+            chunk.text
+        ), f"text_normalized must match normalize_ar(text) for chunk {chunk.chunk_id}"
+        assert chunk.language == detect_language(
+            chunk.text
+        ), f"Chunk {chunk.chunk_id} language={chunk.language} differs from detect_language"
 
         # Exclusions: no impossible patterns, no fake OCR text, no braces, no solo punctuation
-        assert not IMPOSSIBLE_PATTERNS_RE.search(chunk.text), (
-            f"Chunk {chunk.chunk_id} contains impossible ligature pattern"
-        )
+        assert not IMPOSSIBLE_PATTERNS_RE.search(
+            chunk.text
+        ), f"Chunk {chunk.chunk_id} contains impossible ligature pattern"
         assert FAKE_OCR_PHRASE not in chunk.text, f"Chunk {chunk.chunk_id} contains fake OCR phrase"
-        assert "{" not in chunk.text and "}" not in chunk.text, (
-            f"Chunk {chunk.chunk_id} contains braces"
-        )
+        assert (
+            "{" not in chunk.text and "}" not in chunk.text
+        ), f"Chunk {chunk.chunk_id} contains braces"
         assert chunk.text.strip() not in (
             ":",
             ".",
@@ -59,9 +59,9 @@ def test_sample_chunks_all_valid_chunks(sample_chunks: list[Chunk]) -> None:
 
         # Hierarchy empty for chunks where article is None
         if chunk.article is None:
-            assert chunk.hierarchy == [], (
-                f"Chunk {chunk.chunk_id} has article=None but non-empty hierarchy"
-            )
+            assert (
+                chunk.hierarchy == []
+            ), f"Chunk {chunk.chunk_id} has article=None but non-empty hierarchy"
 
 
 def test_sample_chunks_contiguous_indices(sample_chunks: list[Chunk]) -> None:
@@ -74,12 +74,12 @@ def test_sample_chunks_contiguous_indices(sample_chunks: list[Chunk]) -> None:
         doc_chunks.sort(key=lambda c: c.chunk_index)
         expected_total = len(doc_chunks)
         for expected_idx, c in enumerate(doc_chunks):
-            assert c.chunk_index == expected_idx, (
-                f"Document {doc_id} chunk has index {c.chunk_index}, expected {expected_idx}"
-            )
-            assert c.total_chunks == expected_total, (
-                f"Document {doc_id} total_chunks={c.total_chunks}, expected {expected_total}"
-            )
+            assert (
+                c.chunk_index == expected_idx
+            ), f"Document {doc_id} chunk has index {c.chunk_index}, expected {expected_idx}"
+            assert (
+                c.total_chunks == expected_total
+            ), f"Document {doc_id} total_chunks={c.total_chunks}, expected {expected_total}"
 
 
 def test_sample_chunks_document_distribution_and_roles(sample_chunks: list[Chunk]) -> None:
@@ -100,9 +100,9 @@ def test_sample_chunks_document_distribution_and_roles(sample_chunks: list[Chunk
 
     assert set(by_file.keys()) == set(expected_counts.keys())
     for fname, count in expected_counts.items():
-        assert len(by_file[fname]) == count, (
-            f"Expected {count} chunks for {fname}, got {len(by_file[fname])}"
-        )
+        assert (
+            len(by_file[fname]) == count
+        ), f"Expected {count} chunks for {fname}, got {len(by_file[fname])}"
 
     # Roles and owners checks
     for fname in ("adala_001.pdf", "adala_010.pdf", "sgg_7435.pdf"):
@@ -131,9 +131,9 @@ def test_sample_chunks_internal_fixture_notice(sample_chunks: list[Chunk]) -> No
     """Verify internal fixture notice appears exactly once across internal document chunks."""
     internal_chunks = [c for c in sample_chunks if c.source_file == "internal_01_ai_governance.pdf"]
     total_occurrences = sum(c.text.count(INTERNAL_NOTICE) for c in internal_chunks)
-    assert total_occurrences == 1, (
-        f"Expected internal notice exactly once, found {total_occurrences}"
-    )
+    assert (
+        total_occurrences == 1
+    ), f"Expected internal notice exactly once, found {total_occurrences}"
 
 
 def test_sample_chunks_prompt_injection_chunk(sample_chunks: list[Chunk]) -> None:
