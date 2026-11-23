@@ -168,7 +168,7 @@ def update_user_active(
         raise InvalidInput("is_active field required")
 
     active_value = bool(body["is_active"])
-    user.is_active = active_value
+    user.is_active = active_value  # type: ignore[assignment]
     db.commit()
     db.refresh(user)
     record_audit_event(
@@ -212,9 +212,7 @@ def update_role_web(
     if "web_enabled" not in body or body["web_enabled"] is None:
         raise InvalidInput("web_enabled field required")
 
-    db.execute(
-        update(Role).where(Role.id == role_id).values(web_enabled=bool(body["web_enabled"]))
-    )
+    db.execute(update(Role).where(Role.id == role_id).values(web_enabled=bool(body["web_enabled"])))
     db.commit()
     db.refresh(role)
     return RoleResponse(
@@ -245,9 +243,7 @@ def get_audit_logs(
 ) -> list[dict[str, Any]]:
     """Return system audit logs."""
     _ = ctx
-    logs = list(
-        db.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100)).all()
-    )
+    logs = list(db.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100)).all())
     return [
         {
             "id": str(log.id),
@@ -295,8 +291,10 @@ def approve_request(
         role_name=str(role.name),
         decided_by=ctx.user_id,
     )
-    req = db.get(AccountRequest, request_id)
-    return _to_account_request_response(req)
+    updated_req = db.get(AccountRequest, request_id)
+    if updated_req is None:
+        raise NotFound("request not found")
+    return _to_account_request_response(updated_req)
 
 
 @router.post("/account-requests/{request_id}/reject", response_model=AccountRequestResponse)

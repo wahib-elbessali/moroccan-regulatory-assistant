@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+﻿from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -50,16 +51,17 @@ def _to_response(conv: Conversation) -> ConversationResponse:
 def _to_message(row: ConversationMessage) -> MessageResponse:
     created_at = row.created_at if isinstance(row.created_at, datetime) else datetime.now(UTC)
     raw_answer = row.answer
-    answer_obj = raw_answer if isinstance(raw_answer, dict) else {}
+    answer_obj: dict[str, Any] = raw_answer if isinstance(raw_answer, dict) else {}
     lang = str(answer_obj.get("language") or "ar")
     return MessageResponse(
         position=int(row.position),
         question=str(row.question),
         available=True,
-        answer=raw_answer,
+        answer=answer_obj if isinstance(row.answer, dict) else None,
         language=lang,
         created_at=created_at,
     )
+
 
 @router.get("", response_model=list[ConversationResponse])
 @router.get("/", response_model=list[ConversationResponse])
@@ -134,9 +136,7 @@ def append_message(
     now = datetime.now(UTC)
 
     answer_payload = (
-        body.answer.model_dump(mode="json")
-        if hasattr(body.answer, "model_dump")
-        else body.answer
+        body.answer.model_dump(mode="json") if hasattr(body.answer, "model_dump") else body.answer
     )
 
     row = ConversationMessage(
@@ -151,7 +151,7 @@ def append_message(
     if conv.title is None and body.question.strip():
         clean_q = body.question.strip()
         conv.title = clean_q[:60]
-    conv.updated_at = now
+    conv.updated_at = now  # type: ignore[assignment]
 
     db.flush()
     db.commit()
