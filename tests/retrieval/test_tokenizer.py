@@ -11,6 +11,7 @@ from src.retrieval.tokenizer import (
     STOPWORDS,
     STOPWORDS_PATH,
     SUFFIXES,
+    WAW_WORDS,
     light_stem,
     load_stopwords,
     tokenize,
@@ -139,9 +140,9 @@ def test_each_suffix_rule(word: str, stem: str) -> None:
 
 
 def test_rule_lists_are_the_measured_ones() -> None:
-    """Lone و and ه are left out on purpose (see the module docstring): a change here needs a
-    new measurement and a new test per added rule."""
-    assert PREFIXES == ("وال", "بال", "كال", "فال", "لل", "ال")
+    """ه is left out on purpose and lone و comes last, after WAW_WORDS (see the module
+    docstring): a change here needs a new measurement and a new test per added rule."""
+    assert PREFIXES == ("وال", "بال", "كال", "فال", "لل", "ال", "و")
     assert SUFFIXES == ("ات", "ون", "ين", "ها", "هم")
 
 
@@ -161,8 +162,42 @@ def test_at_least_three_letters_are_kept() -> None:
 
 @pytest.mark.parametrize("word", ["وزير", "وثيقه", "وكيل", "وكاله"])
 def test_lone_waw_is_not_a_prefix(word: str) -> None:
-    """The و of these frequent nouns is part of the word (left out of the spec's list)."""
+    """The و of these frequent nouns is part of the word: they are in WAW_WORDS."""
+    assert word in WAW_WORDS
     assert light_stem(word) == word
+
+
+def test_every_waw_word_keeps_its_waw() -> None:
+    """A suffix may still go (وفاتهم → وفات), never the first و."""
+    for word in WAW_WORDS:
+        assert light_stem(word).startswith("و"), word
+
+
+def test_waw_words_are_normalized_and_start_with_waw() -> None:
+    """tokenize compares normalized tokens, so each entry must already be normalized."""
+    for word in WAW_WORDS:
+        assert word.startswith("و"), word
+        assert normalize_ar(word) == word, word
+
+
+@pytest.mark.parametrize(
+    ("word", "stem"),
+    [
+        ("وحمايه", "حمايه"),  # "and protection"
+        ("وحدود", "حدود"),  # "and limits"
+        ("ووزير", "وزير"),  # "and minister": one و removed, the word's own و kept
+    ],
+)
+def test_conjunction_waw_is_removed(word: str, stem: str) -> None:
+    assert light_stem(word) == stem
+
+
+def test_waw_and_article_still_lose_wal() -> None:
+    assert light_stem("والوزير") == "وزير"
+
+
+def test_waw_and_stopword_is_dropped() -> None:
+    assert tokenize("وذلك") == []  # و removed, then ذلك is a stopword
 
 
 @pytest.mark.parametrize("word", ["معالجه", "الماده", "حمايه"])

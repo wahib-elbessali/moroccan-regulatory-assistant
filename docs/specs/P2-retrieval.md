@@ -65,7 +65,7 @@ MUST = required for validation. SHOULD = expected, can be cut if time runs out.
 
 - **P2-20** MUST tokenize BM25 text as: `normalize_ar` (already done for `text_normalized`) → split on spaces → drop tokens of 1 character, except digits (so `المادة 5` keeps `5`) → drop stopwords (`src/retrieval/stopwords_ar.txt`: `في`, `من`, `علي`, `الي`, `عن`, `ان`, `او`, `و`, `التي`, `الذي`, `هذا`, `هذه`, `ذلك`, `كل`, `لا`, `ما`, …, written in normalized form). The **same** function tokenizes chunks and queries.
 - **P2-21** MUST index, for each chunk, `text_normalized` + the normalized `title` and `article`, so a query naming an article ("المادة 12") or a law title matches.
-- **P2-22** SHOULD apply a light stemmer after stopwords: remove one prefix among `وال`, `بال`, `كال`, `فال`, `لل`, `ال`, `و` and one suffix among `ات`, `ون`, `ين`, `ها`, `هم`, `ه`, keeping at least 3 letters. Each rule has a test with real corpus words. No full morphological analyser.
+- **P2-22** SHOULD apply a light stemmer after stopwords: remove one prefix among `وال`, `بال`, `كال`, `فال`, `لل`, `ال`, `و` and one suffix among `ات`, `ون`, `ين`, `ها`, `هم`, keeping at least 3 letters. The lone `و` is not removed from a fixed list of words where it belongs to the word (`وزير`, `وثيقه` …); a final `ه` is not removed, because after `normalize_ar` it is mostly the `ة`. A word that becomes a stopword after stemming is dropped. Each rule has a test with real corpus words. No full morphological analyser.
 
 ### 3.5 Rights and state (`update_roles`, `hide`, `show`, `delete`)
 
@@ -256,7 +256,9 @@ def tokenize(normalized: str) -> list[str]:
     for t in normalized.split():
         if (len(t) < 2 and not t.isdigit()) or t in STOPWORDS:
             continue
-        out.append(light_stem(t))                      # SHOULD (P2-22); identity in the minimum version
+        stem = light_stem(t)                           # SHOULD (P2-22); identity in the minimum version
+        if stem not in STOPWORDS:                      # stemming can produce a stopword
+            out.append(stem)
     return out
 ```
 

@@ -740,9 +740,9 @@ def test_the_route_calls_the_shared_search_signature() -> None:
 def test_the_route_handler_is_synchronous() -> None:
     """``search`` must stay a plain ``def`` so FastAPI runs it in a worker thread.
 
-    ``Retrieval.search`` blocks on Qdrant and on P6's models service (53 s median on the Sat
-    11-21 run). As an ``async def`` it would hold the event loop for that whole time and stall
-    every other request, ``/health`` and ``/ask``'s stream included.
+    ``Retrieval.search`` blocks on Qdrant and on P6's models service. As an ``async def`` it would
+    hold the event loop for that whole time and stall every other request, ``/health`` and
+    ``/ask``'s stream included.
     """
     import inspect
 

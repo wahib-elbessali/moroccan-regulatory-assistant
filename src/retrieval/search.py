@@ -174,8 +174,8 @@ class Retrieval:
         store: The Qdrant store (slice A).
         bm25: The BM25 index (slice B).
         models: Where embeddings and re-ranking come from (``get_models()``). P2 never loads a
-            model. Optional: when it is not given, the store's own client is used, so the wiring
-            agreed in ``P2-common.md`` — ``Retrieval(store, bm25)`` — keeps working.
+            model. Optional: when it is not given, the store's own client is used, so
+            ``Retrieval(store, bm25)`` keeps working.
         top_k_vector: Chunks asked of the vector search (``retrieval.top_k_vector``).
         top_k_bm25: Chunk IDs asked of BM25 (``retrieval.top_k_bm25``).
         rrf_k: The RRF constant (``retrieval.rrf_k``).
