@@ -13,6 +13,7 @@ from src.agents.orchestrator.prompts import (
     plan_messages,
     reformulate_messages,
 )
+from src.agents.orchestrator.validation import coerce_bool, parse_json_or_none
 from src.core.config import cfg
 from src.core.contracts.models import Answer, Passage, ProcessEvent, UserContext
 from src.core.contracts.registry import (
@@ -71,19 +72,36 @@ def count_tokens_safe(llm: Any, text: str) -> int:
         return len(text) // 3 + 1
 
 
-def parse_json_or_none(text: str) -> dict | None:
+def grade_indexes(reply: str) -> list[int]:
+    """The passage numbers a grader reply keeps, tolerant of small-model formats.
+
+    Accepts {"relevant": [1, 2]} (asked), a bare list [1, 2] and numbers written as strings
+    (["1"], as qwen2.5:7b does). Anything else gives an empty list (nothing kept).
+    """
     try:
-        clean = text.strip()
+        clean = reply.strip()
         if clean.startswith("```json"):
             clean = clean[7:]
-        if clean.startswith("```"):
+        elif clean.startswith("```"):
             clean = clean[3:]
         if clean.endswith("```"):
             clean = clean[:-3]
         data = json.loads(clean.strip())
-        return data if isinstance(data, dict) else None
     except Exception:
-        return None
+        return []
+    if isinstance(data, dict):
+        data = data.get("relevant", [])
+    if not isinstance(data, list):
+        return []
+    found: list[int] = []
+    for item in data:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            found.append(item)
+        elif isinstance(item, str) and item.strip().isdigit():
+            found.append(int(item.strip()))
+    return found
 
 
 # --- Nodes ---
@@ -124,7 +142,7 @@ def plan_node(state: GraphState) -> dict:
         subs = [state["question"]]
 
     sub_questions = subs[: cfg.agents.max_sub_questions]
-    needs_web = bool(data.get("needs_web", False)) if data else False
+    needs_web = coerce_bool(data.get("needs_web"), default=False) if data else False
 
     state["emit"](ProcessEvent(step="plan", data={"sub_questions": sub_questions}))
 
@@ -194,19 +212,12 @@ def grade_node(state: GraphState) -> dict:
         try:
             reply = llm.chat(messages, max_tokens=100)
             tokens = count_tokens_safe(llm, messages_text(messages) + reply)
-            data = parse_json_or_none(reply)
+            rel_indexes = grade_indexes(reply)
         except Exception:
             tokens = 0
-            data = None
-
-        rel_indexes = data.get("relevant", []) if data else []
-        if not isinstance(rel_indexes, list):
             rel_indexes = []
-        relevant = [
-            top[i - 1]
-            for i in dict.fromkeys(rel_indexes)
-            if isinstance(i, int) and not isinstance(i, bool) and 1 <= i <= len(top)
-        ]
+
+        relevant = [top[i - 1] for i in dict.fromkeys(rel_indexes) if 1 <= i <= len(top)]
 
     current_passages = dict(state["passages"])
     for p in relevant:

@@ -13,7 +13,7 @@ PLAN_SYSTEM = (
     "search questions, always written in Modern Standard Arabic, even when the question is in "
     "French. A question about one thing gives "
     "one search question. A question that asks about several different things (for example "
-    "joined by \"and\" or \"،\") gives one complete search question for each thing: never "
+    'joined by "and" or "،") gives one complete search question for each thing: never '
     "drop a part.\n"
     "Also set needs_web to true when answering needs information that is not in Moroccan legal "
     "texts: foreign or European law, recent news, or the definition of a general concept. Set it "

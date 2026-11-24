@@ -1,20 +1,21 @@
 # src/agents/orchestration_support/orchestration_limits.py
-"""The limits of one request, as one object, plus a deadline and a check of the `agents` config.
+"""The limits of one request as one object, and a check of the `agents` config at start-up.
 
-`graph.py` and `real.py` read `cfg.agents.*` directly and are not changed. This module gives the
-same numbers a name and derives the worst cases from them (P3-16), so tuning (schedule day 10) can
-see them before a run, and a later change can use one `RequestLimits` instead of repeating the
-formulas. A test keeps `recommended_recursion_limit` equal to `real._recursion_limit`.
+`cfg.agents` (config.yaml) is the only source of the numbers; `graph.py` and `real.py` read it
+directly. This module adds what they do not do: derive the worst cases (P3-16) and warn, once,
+when the configuration is inconsistent. `real_orchestrator()` calls `audit_configured_limits()`.
+It never raises: a wrong config must not stop a request that could have been answered.
 """
 
 from __future__ import annotations
 
-import time
-from collections.abc import Callable
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from src.core.config import cfg
+
+logger = logging.getLogger(__name__)
 
 # Codes returned by `check_limits`.
 NOT_POSITIVE = "not_positive"
@@ -60,33 +61,6 @@ class RequestLimits:
         reformulations = self.max_sub_questions * max(self.max_iterations - 1, 0)
         return 1 + self.worst_case_searches + reformulations
 
-    @property
-    def recommended_recursion_limit(self) -> int:
-        """LangGraph steps in the worst case: (search + grade + reformulate) per iteration."""
-        return self.max_sub_questions * (3 * self.max_iterations + 1) + 10
-
-    def tokens_left(self, used: int) -> int:
-        return max(self.max_tokens - used, 0)
-
-    def budget_reached(self, used: int) -> bool:
-        """Same rule as `graph.over_budget`: stop once the total reaches the budget."""
-        return used >= self.max_tokens
-
-
-class Deadline:
-    """A point in time on a monotonic clock. `clock` can be replaced in a test."""
-
-    def __init__(self, seconds: float, clock: Callable[[], float] = time.monotonic) -> None:
-        self._clock = clock
-        self._end = clock() + max(float(seconds), 0.0)
-
-    def remaining(self) -> float:
-        """Seconds left, never below 0."""
-        return max(self._end - self._clock(), 0.0)
-
-    def expired(self) -> bool:
-        return self.remaining() <= 0.0
-
 
 def check_limits(limits: RequestLimits, top_k_final: int | None = None) -> list[str]:
     """Problems of a configuration, as `code:name` strings; [] means consistent.
@@ -113,3 +87,25 @@ def check_limits(limits: RequestLimits, top_k_final: int | None = None) -> list[
     if limits.max_passages_to_writer < limits.min_relevant:
         problems.append(f"{WRITER_BELOW_RELEVANT}:max_passages_to_writer")
     return problems
+
+
+def audit_configured_limits() -> list[str]:
+    """Check `cfg.agents` once and log the result (codes and numbers only, never any text).
+
+    Returns the problems found. Never raises.
+    """
+    try:
+        limits = RequestLimits.from_config()
+        problems = check_limits(limits, int(cfg.retrieval.top_k_final))
+        for problem in problems:
+            logger.warning("orchestrator limits inconsistent: %s", problem)
+        logger.info(
+            "orchestrator limits: worst_case_searches=%d worst_case_llm_calls=%d timeout_s=%s",
+            limits.worst_case_searches,
+            limits.worst_case_llm_calls,
+            limits.request_timeout_s,
+        )
+        return problems
+    except Exception as exc:
+        logger.warning("orchestrator limits not audited: error=%s", type(exc).__name__)
+        return []

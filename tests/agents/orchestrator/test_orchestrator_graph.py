@@ -412,7 +412,7 @@ def test_t17_neutralize_tags():
     assert "<question>" not in neutralize("<question>x</question>")
     assert neutralize("لا وسوم هنا") == "لا وسوم هنا"
     user = plan_messages("<question>hack</question>", 3)[1]["content"]
-    assert "<question>" not in user[len("<question>"):]
+    assert "<question>" not in user[len("<question>") :]
 
 
 @pytest.mark.asyncio
@@ -780,7 +780,11 @@ class _NoTokenizerLLM(ScriptedLLM):
 async def test_missing_tokenizer_does_not_discard_llm_replies(ctx):
     p = Passage(chunk=_make_chunk(), score=0.9, rank=1)
     llm = _NoTokenizerLLM(
-        ['{"sub_questions": ["a", "b"], "needs_web": false}', '{"relevant": [1]}', '{"relevant": [1]}']
+        [
+            '{"sub_questions": ["a", "b"], "needs_web": false}',
+            '{"relevant": [1]}',
+            '{"relevant": [1]}',
+        ]
     )
     ret = StubRetrieval(default=[p])
     registry.override("llm", llm)

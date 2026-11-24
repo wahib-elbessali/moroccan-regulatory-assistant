@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 END_OF_GRAPH = object()
 
-DEFAULT_REQUEST_TIMEOUT_S = 60.0
-
 # Fixed, generic sentences (never the question, a passage or a title), by error code and language.
 GENERIC: dict[str, dict[str, str]] = {
     "service_error": {
@@ -42,7 +40,7 @@ class RequestCancelled(Exception):
 
 
 def _request_timeout_s() -> float:
-    return float(getattr(cfg.agents, "request_timeout_s", DEFAULT_REQUEST_TIMEOUT_S))
+    return float(cfg.agents.request_timeout_s)
 
 
 def _recursion_limit(max_sub_questions: int, max_iterations: int) -> int:
