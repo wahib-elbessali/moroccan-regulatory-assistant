@@ -54,7 +54,7 @@ def test_t8_presentation_forms_nfkc_logical_vs_visual() -> None:
 
     # 2. Visual reversed order: e.g. ةداملا instead of المادة
     reversed_words = (
-        "ةداملا 12 نم اذه نوناقلا ىلع عيمج ةبراغملا يف لك ناكم ثيحو اودجو " "لصفلا 3 مسقلا باتكلا"
+        "ةداملا 12 نم اذه نوناقلا ىلع عيمج ةبراغملا يف لك ناكم ثيحو اودجو لصفلا 3 مسقلا باتكلا"
     )
     norm_reversed = unicodedata.normalize("NFKC", reversed_words)
     assert share_of_reversed_words(norm_reversed) > 0.3
