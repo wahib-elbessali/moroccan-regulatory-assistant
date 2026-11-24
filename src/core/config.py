@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -210,7 +210,29 @@ def load_config(yaml_path: str | os.PathLike[str] | None = None) -> AppConfig:
     if leaked:
         raise ValueError(f"Secrets interdits dans {path.name} (Ã  mettre dans .env) : {leaked}")
 
+    overrides = contract_overrides()
+    if overrides:
+        data["contracts"] = {**(data.get("contracts") or {}), **overrides}
+
     return AppConfig(**data)
+
+
+CONTRACT_ENV_PREFIX = "CONTRACT_"
+
+
+def contract_overrides(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """``contracts`` entries set from the environment, over config.yaml.
+
+    ``CONTRACT_LLM=real`` sets ``contracts.llm`` to ``real`` for one process, without editing
+    config.yaml (mounted read-only in the containers): ``docker compose exec -e CONTRACT_LLM=real
+    api python ...``. Values are checked like the YAML ones (``fake`` or ``real``).
+    """
+    env = os.environ if environ is None else environ
+    return {
+        key[len(CONTRACT_ENV_PREFIX) :].lower(): value.strip().lower()
+        for key, value in env.items()
+        if key.upper().startswith(CONTRACT_ENV_PREFIX) and len(key) > len(CONTRACT_ENV_PREFIX)
+    }
 
 
 class _LazyConfig:

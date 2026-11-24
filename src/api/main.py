@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager

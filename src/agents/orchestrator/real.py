@@ -60,7 +60,6 @@ async def safe_narrate(event: ProcessEvent, language: str) -> AsyncIterator[str]
 
 
 class RealOrchestrator:
-
     async def run(
         self, question: str, ctx: UserContext, use_web: bool = True
     ) -> AsyncIterator[dict]:

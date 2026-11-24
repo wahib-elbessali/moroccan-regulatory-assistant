@@ -1,8 +1,7 @@
 """P2 retrieval: the real factory the registry calls (00-shared §9, P2 spec §6.2).
 
 ``real_retrieval()`` is the only place where the three slices of P2 are put together: Wahib's
-``QdrantStore``, Basma's ``BM25Index`` and the ``Retrieval`` pipeline of ``search.py``. The wiring
-is the one agreed in ``P2-common.md``.
+``QdrantStore``, Basma's ``BM25Index`` and the ``Retrieval`` pipeline of ``search.py``.
 
 **Nothing that touches the configuration is imported at module level.** ``src/core/config.py``
 builds ``cfg`` while it is being imported and raises when the environment is incomplete (no
@@ -24,8 +23,7 @@ __all__ = ["real_retrieval"]
 # ``RetrievalSettings`` (P5, ``src/core/config.py``) does not define ``qdrant_url``, ``collection``
 # or ``embed_batch_size`` yet, although ``config.yaml`` carries all three under ``retrieval:``; a
 # pydantic model ignores the keys it does not declare, so they are silently dropped. These are the
-# config.yaml values, used until P5 adds the fields — see the note in ``P2-C-fatima.md``. P2 does
-# not edit P5's file.
+# config.yaml values, used until P5 adds the fields. P2 does not edit P5's file.
 DEFAULT_QDRANT_URL = "http://qdrant:6333"  # retrieval.qdrant_url
 DEFAULT_COLLECTION = "chunks"  # retrieval.collection
 DEFAULT_EMBED_BATCH_SIZE = 32  # retrieval.embed_batch_size
