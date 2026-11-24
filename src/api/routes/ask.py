@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from src.core.audit import audited_stream
 from src.core.config import cfg
 from src.core.contracts.errors import AppError, InvalidInput
+from src.core.contracts.lang import detect_language
 from src.core.contracts.models import UserContext
 from src.core.contracts.registry import get_orchestrator
 from src.core.security import get_current_user_context
@@ -26,7 +27,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_MAX_QUESTION_CHARS = 1000  # value of agents.max_question_chars in config.yaml
-GENERIC_ERROR_MESSAGE = "The request could not be completed."
+# Generic sentence of the fallback `error` event, by the language of the question.
+GENERIC_ERROR_MESSAGES = {
+    "ar": "تعذر إتمام الطلب.",
+    "fr": "La demande n'a pas pu être traitée.",
+}
 
 
 class AskRequest(BaseModel):
@@ -63,7 +68,10 @@ async def _safe_events(
         # Log the exception type only: its message could contain the question or a passage.
         logger.error("orchestrator failed: %s", type(exc).__name__)
         if not terminal_sent:
-            yield {"event": "error", "data": {"code": code, "message": GENERIC_ERROR_MESSAGE}}
+            message = GENERIC_ERROR_MESSAGES.get(
+                detect_language(question), GENERIC_ERROR_MESSAGES["fr"]
+            )
+            yield {"event": "error", "data": {"code": code, "message": message}}
 
 
 def _to_sse(event: dict[str, Any]) -> str:

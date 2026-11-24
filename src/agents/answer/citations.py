@@ -9,7 +9,8 @@ from html import escape
 from src.core.contracts.models import Citation, Passage, WebResult
 
 _MARKER_RE = re.compile(r"\[(\d+)\]")
-_CLAIM_BOUNDARY_RE = re.compile(r"(?<=[.!؟?])(?=\s|$)|\r?\n+")
+_CLAIM_BOUNDARY_RE = re.compile(r"(?<!^[0-9٠-٩]\.)(?<=[.!؟?])(?=\s|$)|\r?\n+", re.MULTILINE)
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|\d+[.)]|[٠-٩]+[.)])\s+")
 _ENDING_PUNCTUATION_RE = re.compile(r"([.!؟?])([\"'’”»)]*)$")
 
 
@@ -111,8 +112,9 @@ def build_sources(passages: list[Passage], web: list[WebResult]) -> list[Source]
 
 
 def split_claims(text: str, valid_sources: set[int]) -> list[Claim]:
-    """Split on sentence endings or line breaks and keep only valid source markers."""
+    """Split on sentence endings or line breaks and keep valid citation markers."""
     claims: list[Claim] = []
+    list_sources: list[int] = []
     for fragment in _CLAIM_BOUNDARY_RE.split(text):
         fragment = fragment.strip()
         if not fragment:
@@ -122,6 +124,14 @@ def split_claims(text: str, valid_sources: set[int]) -> list[Claim]:
             number = int(match.group(1))
             if number in valid_sources and number not in cited:
                 cited.append(number)
+        if re.sub(_MARKER_RE, "", fragment).rstrip().endswith(":"):
+            list_sources = cited.copy()
+            continue
+        if _LIST_ITEM_RE.match(fragment):
+            if not cited:
+                cited = list_sources.copy()
+        else:
+            list_sources = []
         claims.append(Claim(text=fragment, cited=cited))
     return claims
 
