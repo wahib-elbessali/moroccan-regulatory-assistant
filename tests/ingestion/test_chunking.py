@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from uuid import uuid4
 
+from src.core.contracts.fakes import FakeOCRClient
 from src.core.contracts.models import DocumentMeta
-from src.ingestion.chunking import chunk_document, heading_word, update_path
+from src.ingestion.chunking import (
+    _ChunkUnit,
+    _is_text_start_line,
+    chunk_document,
+    heading_word,
+    split_long,
+    update_path,
+)
+from src.ingestion.extract import extract
 from src.ingestion.models import Page
 
 
@@ -356,3 +367,161 @@ def test_trivial_chunks_merged_or_dropped() -> None:
     empty_pages = [Page(number=1, text="{\n   -  \n}")]
     empty_chunks = chunk_document("doc_empty", empty_pages)
     assert len(empty_chunks) == 0
+
+
+def test_multi_text_two_decrees_segmentation() -> None:
+    """Multi-text segmentation: two decrees of two articles each are cleanly partitioned.
+
+    Article 2 of Decree 1 does not leak into Decree 2's title/visas, and Decree 2's chunks
+    inherit Decree 2's title as the first element of hierarchy.
+    """
+    decree1_title = "مرسوم رقم 2.24.101 صادر في 15 يناير 2024"
+    decree2_title = "مرسوم رقم 2.24.102 صادر في 20 فبراير 2024"
+
+    content = (
+        f"{decree1_title}\n"
+        "بناء على الدستور،\n"
+        "وعلى المرسوم رقم 2.20.10 المتعلق بالتنظيم،\n"
+        "قرر ما يلي:\n"
+        "المادة الأولى\n"
+        "يحدد هذا المرسوم شروط ممارسة المهنة.\n"
+        "المادة الثانية\n"
+        "يسند تنفيذ هذا المرسوم إلى وزير العدل.\n"
+        "وحرر بالرباط في 15 يناير 2024.\n"
+        "الإمضاء: رئيس الحكومة.\n"
+        f"{decree2_title}\n"
+        "بناء على القانون رقم 70.03،\n"
+        "قرر ما يلي:\n"
+        "المادة الأولى\n"
+        "تطبق أحكام هذا المرسوم على المؤسسات العامة.\n"
+        "المادة الثانية\n"
+        "ينشر هذا المرسوم بالجريدة الرسمية.\n"
+        "وحرر بالرباط في 20 فبراير 2024.\n"
+        "الإمضاء: رئيس الحكومة."
+    )
+    pages = [Page(number=1, text=content)]
+    meta = DocumentMeta(title="مرسومان متتاليان", source_file="two_decrees.txt")
+
+    chunks = chunk_document("multi_doc", pages, meta=meta)
+    assert len(chunks) == 6
+
+    # Decree 1 Preamble
+    assert chunks[0].article is None
+    assert chunks[0].hierarchy == [decree1_title]
+    assert decree1_title in chunks[0].text
+
+    # Decree 1 Article 1
+    assert chunks[1].article == "المادة الأولى"
+    assert chunks[1].hierarchy == [decree1_title]
+
+    # Decree 1 Article 2: must contain signatures and NOT contain Decree 2 title
+    assert chunks[2].article == "المادة الثانية"
+    assert chunks[2].hierarchy == [decree1_title]
+    assert "الإمضاء: رئيس الحكومة" in chunks[2].text
+    assert decree2_title not in chunks[2].text
+    assert "بناء على القانون رقم 70.03" not in chunks[2].text
+
+    # Decree 2 Preamble: must contain Decree 2 title and visas
+    assert chunks[3].article is None
+    assert chunks[3].hierarchy == [decree2_title]
+    assert decree2_title in chunks[3].text
+    assert "بناء على القانون رقم 70.03" in chunks[3].text
+
+    # Decree 2 Article 1: numbering resets to الأولى without error
+    assert chunks[4].article == "المادة الأولى"
+    assert chunks[4].hierarchy == [decree2_title]
+
+    # Decree 2 Article 2
+    assert chunks[5].article == "المادة الثانية"
+    assert chunks[5].hierarchy == [decree2_title]
+
+
+def test_visa_citation_does_not_split_text() -> None:
+    """A decree cited inside visas ('وعلى المرسوم رقم...') does not trigger a text split."""
+    content = (
+        "مرسوم رقم 2.24.500 صادر في 10 مارس 2024\n"
+        "بناء على الدستور،\n"
+        "وعلى المرسوم رقم 2.18.100 الصادر بتنظيم القطاع،\n"
+        "وعلى القرار رقم 1234.20 الصادر بتحديد المعايير،\n"
+        "قرر ما يلي:\n"
+        "المادة 1\n"
+        "نص المادة الأولى.\n"
+        "المادة 2\n"
+        "نص المادة الثانية.\n"
+        "وحرر بالرباط في 10 مارس 2024.\n"
+        "الإمضاء: رئيس الحكومة."
+    )
+    pages = [Page(number=1, text=content)]
+    meta = DocumentMeta(title="مرسوم وحيد", source_file="single_decree.txt")
+    chunks = chunk_document("single_doc", pages, meta=meta)
+
+    # 1 preamble + 2 articles = exactly 3 chunks (no extra text split)
+    assert len(chunks) == 3
+    assert chunks[0].article is None
+    assert chunks[1].article == "المادة 1"
+    assert chunks[2].article == "المادة 2"
+
+
+def test_split_long_preferring_punctuation() -> None:
+    """split_long prefers splitting at line ending with terminal punctuation (. ؛ : ؟)."""
+    # Unit exceeding max_chunk_chars=120
+    lines_with_punct = [
+        (1, "المادة 1"),
+        (1, "هذه الفقرة الأولى وتتضمن تفاصيل قانونية هامة وتوضيحات."),
+        (1, "وهذه بداية الفقرة الثانية المستمرة في سرد الأحكام التنظيمية"),
+        (1, "والتي تستكمل البيان بصورة وافية ومطولة."),
+    ]
+    u1 = _ChunkUnit(article="المادة 1", hierarchy=["الباب 1"], lines=lines_with_punct)
+    # Total length is ~195 chars -> will split with max_chunk_chars=110
+    splits = split_long([u1], max_chunk_chars=110)
+    assert len(splits) == 2
+    # Sub-chunk 0 should end with the line ending with '.'
+    assert splits[0].lines[-1][1].endswith(".")
+    assert "والفقرة الأولى" in splits[0].text or "هذه الفقرة الأولى" in splits[0].text
+
+    # Unit without punctuation splits cleanly at line boundary
+    lines_no_punct = [
+        (1, "المادة 2"),
+        (1, "سطر أول في المادة بدون أي علامات ترقيم"),
+        (1, "سطر ثان يتابع الكلام القانوني"),
+        (1, "سطر ثالث يتابع الكلام القانوني"),
+    ]
+    u2 = _ChunkUnit(article="المادة 2", hierarchy=["الباب 1"], lines=lines_no_punct)
+    splits_no_punct = split_long([u2], max_chunk_chars=60)
+    assert len(splits_no_punct) > 1
+    # Check that all text is preserved
+    full_recombined = "\n".join(s.text for s in splits_no_punct)
+    for _, line_val in lines_no_punct:
+        assert line_val in full_recombined
+
+
+def test_sgg_7435_invariants_and_text_boundaries() -> None:
+    """sgg_7435.pdf (read-only): no internal article/title headings; hierarchy non-empty."""
+    p = Path("data/raw/public/sgg_7435.pdf")
+    if not p.is_file():
+        return
+
+    fake_ocr = FakeOCRClient()
+    pages = extract(p, ocr_client=fake_ocr)
+    meta = DocumentMeta(title="الجريدة الرسمية عدد 7435", source_file=p.name)
+    chunks = chunk_document("sgg_7435", pages, meta=meta)
+
+    assert len(chunks) > 0
+
+    # 1. No body chunk contains an article heading line after line 1
+    for idx, c in enumerate(chunks):
+        lines = c.text.splitlines()
+        for line_idx in range(1, len(lines)):
+            line_str = lines[line_idx].strip()
+            assert not re.match(
+                r"^(المادة|الفصل)\s+([0-9٠-٩]+|الأولى|الثانية)", line_str
+            ), f"Chunk {idx} line {line_idx} contains unexpected article heading: {line_str}"
+            # 2. No body chunk (p >= 4) contains a text title line after line 1
+            if c.page_start >= 4:
+                assert not _is_text_start_line(
+                    line_str
+                ), f"Chunk {idx} line {line_idx} contains unexpected text title: {line_str}"
+
+        # 3. Hierarchy non-empty for BO chunks except the issue preamble (p < 4)
+        if c.page_start >= 4:
+            assert len(c.hierarchy) >= 1, f"Chunk {idx} on page {c.page_start} has empty hierarchy"

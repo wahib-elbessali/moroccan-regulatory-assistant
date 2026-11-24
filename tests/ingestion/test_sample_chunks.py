@@ -1,16 +1,103 @@
 """Validation tests for tests/fixtures/sample_chunks.jsonl (P1-05, P5-08)."""
 
+import re
 from collections import defaultdict
 from pathlib import Path
 
 from src.core.contracts import Chunk, make_chunk_id
 from src.core.contracts.lang import detect_language
 from src.ingestion.arabic_pdf import IMPOSSIBLE_PATTERNS_RE
+from src.ingestion.chunking import _is_text_start_line
 from src.ingestion.normalize import normalize_ar
 from tests.ingestion.doubles import LECTEUR_ID, OTHER_LECTEUR_ID
 
 INTERNAL_NOTICE: str = "وثيقة تجريبية — محتوى خيالي"
 FAKE_OCR_PHRASE: str = "نص مستخرج عبر التعرف الضوئي"
+TERMINAL_PUNCT: tuple[str, ...] = (".", "؛", ":", "؟", "?", "!", "»", '"', "'", ")")
+
+WORDS_80: list[str] = [
+    "المرتفعة",
+    "الجريدة",
+    "الرسمية",
+    "الاعتمادات",
+    "الميزانية",
+    "النفقات",
+    "المادة",
+    "الفصل",
+    "الباب",
+    "القسم",
+    "الفرع",
+    "الكتاب",
+    "القانون",
+    "المرسوم",
+    "الظهير",
+    "الشريف",
+    "المملكة",
+    "المغربية",
+    "الحكومة",
+    "الوزير",
+    "وزير",
+    "وزيرة",
+    "الأول",
+    "الأولى",
+    "الثاني",
+    "الثانية",
+    "الثالث",
+    "الثالثة",
+    "الرابع",
+    "الرابعة",
+    "الخامس",
+    "الخامسة",
+    "السادس",
+    "السادسة",
+    "السابع",
+    "السابعة",
+    "الثامن",
+    "الثامنة",
+    "التاسع",
+    "التاسعة",
+    "العاشر",
+    "العاشرة",
+    "تتكون",
+    "اللجنة",
+    "المجلس",
+    "المحكمة",
+    "القضائية",
+    "الإدارية",
+    "المالية",
+    "العامة",
+    "الخاصة",
+    "الوطنية",
+    "الدولة",
+    "المؤسسة",
+    "المؤسسات",
+    "الرعاية",
+    "الاجتماعية",
+    "الأسرة",
+    "الزواج",
+    "الطلاق",
+    "الأطفال",
+    "الجنسية",
+    "الحالة",
+    "المدنية",
+    "التكافل",
+    "العائلي",
+    "الأرامل",
+    "الدعم",
+    "المباشر",
+    "شروط",
+    "معايير",
+    "الاستفادة",
+    "تطبيق",
+    "أحكام",
+    "تنفيذ",
+    "بتنفيذ",
+    "المتعلق",
+    "المتعلقة",
+    "الموارد",
+    "التكاليف",
+]
+REV_WORDS_80: list[str] = [w[::-1] for w in WORDS_80]
 
 
 def test_sample_chunks_file_exists() -> None:
@@ -57,8 +144,8 @@ def test_sample_chunks_all_valid_chunks(sample_chunks: list[Chunk]) -> None:
             "؛",
         ), f"Chunk {chunk.chunk_id} is solo punctuation"
 
-        # Hierarchy empty for chunks where article is None
-        if chunk.article is None:
+        # Hierarchy empty for chunks where article is None (except multi-text BO preambles)
+        if chunk.article is None and ("sgg" not in (chunk.source_file or "")):
             assert (
                 chunk.hierarchy == []
             ), f"Chunk {chunk.chunk_id} has article=None but non-empty hierarchy"
@@ -183,3 +270,44 @@ def test_sample_chunks_specific_edge_cases(sample_chunks: list[Chunk]) -> None:
         for doc_chunks in by_doc.values()
     )
     assert has_consecutive, "Must contain at least two consecutive chunks from the same document"
+
+
+def test_sample_chunks_invariants(sample_chunks: list[Chunk]) -> None:
+    """Verify invariants: no tatweel, no reversed words, no internal headings/titles, terminal punct, non-empty BO hierarchy."""
+    for chunk in sample_chunks:
+        # 1. No tatweel
+        assert "\u0640" not in chunk.text, f"Chunk {chunk.chunk_id} contains tatweel U+0640"
+
+        # 2. No reversed words from 80-word list
+        for rw in REV_WORDS_80:
+            assert rw not in chunk.text, f"Chunk {chunk.chunk_id} contains reversed word: {rw}"
+
+        # 3. No internal heading line after line 1 (except citations)
+        lines = [line_item.strip() for line_item in chunk.text.splitlines() if line_item.strip()]
+        for line_idx, line_str in enumerate(lines[1:], start=1):
+            if re.match(r"^(المادة|الفصل)\s+", line_str):
+                prev_l = lines[line_idx - 1] if line_idx > 0 else ""
+                next_l = lines[line_idx + 1] if line_idx + 1 < len(lines) else ""
+                context = f"{prev_l} {line_str} {next_l}"
+                assert any(
+                    w in context for w in ("أعلاه", "من", "في", "قانون", "عليه", "عليها")
+                ), f"Chunk {chunk.chunk_id} has heading after line 1: {line_str}"
+            if chunk.source_file and "sgg" in chunk.source_file:
+                assert not _is_text_start_line(
+                    line_str
+                ), f"BO chunk {chunk.chunk_id} has text title after line 1: {line_str}"
+
+        # 4. Ends with terminal punctuation
+        last_line = lines[-1]
+        ends_punct = (last_line[-1] in TERMINAL_PUNCT) or (
+            last_line[0] in (".", "؛", ":", "؟", "?", "!")
+        )
+        assert (
+            ends_punct
+        ), f"Chunk {chunk.chunk_id} does not end with terminal punctuation: {last_line}"
+
+        # 5. Non-empty hierarchy for BO chunks (sgg_7435.pdf)
+        if chunk.source_file and "sgg" in chunk.source_file:
+            assert (
+                len(chunk.hierarchy) >= 1
+            ), f"BO chunk {chunk.chunk_id} must have non-empty hierarchy"

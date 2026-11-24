@@ -405,6 +405,27 @@ def test_sanitize_text_strips_cc_control_characters() -> None:
     assert sanitize_text(arabic_clean) == arabic_clean
 
 
+def test_sanitize_text_tatweel_removal_and_word_gluing() -> None:
+    """Tatweel U+0640 and adjacent single space are stripped; isolated tatweel removed."""
+    # Pattern 1 & 2: Tatweel with space between letters
+    assert sanitize_text("ت ـتكـون") == "تتكون"
+    assert sanitize_text("تكـ ـون") == "تكون"
+
+    # Clean word without tatweel is unchanged
+    clean_word = "تتكون الهيئة من سبعة أعضاء"
+    assert sanitize_text(clean_word) == clean_word
+
+    # Two words separated by isolated tatweel remain two distinct words
+    separated = sanitize_text("كلمة أولى ـ كلمة ثانية")
+    tokens = separated.split()
+    assert len(tokens) == 4
+    assert "\u0640" not in separated
+    assert tokens[0] == "كلمة"
+    assert tokens[1] == "أولى"
+    assert tokens[2] == "كلمة"
+    assert tokens[3] == "ثانية"
+
+
 def test_extract_digital_pdf_sanitizes_control_characters(tmp_path: Path) -> None:
     """extract() strips \\x08 and other Cc chars from digital PDF, preserving \\n."""
     pdf_file = tmp_path / "control_chars.pdf"
