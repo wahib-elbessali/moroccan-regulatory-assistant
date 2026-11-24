@@ -10,9 +10,11 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from src.core.contracts.enums import (
@@ -20,6 +22,35 @@ from src.core.contracts.enums import (
     DocStatus,
 )
 from src.core.db.base import Base
+
+
+class PortableUUID(TypeDecorator):
+    """Stores UUIDs natively in PostgreSQL and as canonical strings in SQLite."""
+
+    impl = String(36)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
+        return dialect.type_descriptor(String(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        parsed = value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+        if dialect.name == "postgresql":
+            return parsed
+        return str(parsed)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, uuid.UUID):
+            return value
+        if isinstance(value, float):
+            raise TypeError(f"Unexpected float value for UUID column: {value!r}")
+        return uuid.UUID(str(value))
 
 
 def utc_now() -> datetime:
@@ -56,7 +87,7 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Column[uuid.UUID] = Column(PortableUUID(), primary_key=True, default=uuid.uuid4)
     username = Column(String(32), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)  # Hash Argon2
     full_name = Column(String(100), nullable=False)
@@ -89,7 +120,7 @@ class AccountRequest(Base):
 
     __tablename__ = "account_requests"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Column[uuid.UUID] = Column(PortableUUID(), primary_key=True, default=uuid.uuid4)
     username = Column(String(32), nullable=False, index=True)
     hashed_password = Column(String(255), nullable=True)
     full_name = Column(String(100), nullable=False)
@@ -100,8 +131,8 @@ class AccountRequest(Base):
         index=True,
     )
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    decided_by = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    decided_by: Column[uuid.UUID | None] = Column(
+        PortableUUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     decided_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -123,7 +154,9 @@ class Document(Base):
     source_file = Column(String(255), nullable=False)
     source = Column(String(500), nullable=True)
     date = Column(String(100), nullable=True)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    owner_id: Column[uuid.UUID | None] = Column(
+        PortableUUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
     status = Column(
         String(20),
         default=DocStatus.RECEIVED.value,
@@ -177,18 +210,14 @@ class AuditLog(Base):
 
     __tablename__ = "audit_log"
 
-    id = Column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        primary_key=True,
-        autoincrement=True,
-    )
-    request_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    user_id = Column(
-        UUID(as_uuid=True),
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    request_id: Column[uuid.UUID] = Column(PortableUUID(), nullable=False, index=True)
+    user_id: Column[uuid.UUID | None] = Column(
+        PortableUUID(),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-    )  # Nullable : tâches de fond, login inconnu
+    )
     action = Column(String(50), nullable=False, index=True)
     details = Column(JSONB, nullable=True)
     query_text = Column(Text, nullable=True)
@@ -207,9 +236,9 @@ class Conversation(Base):
 
     __tablename__ = "conversations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        UUID(as_uuid=True),
+    id: Column[uuid.UUID] = Column(PortableUUID(), primary_key=True, default=uuid.uuid4)
+    user_id: Column[uuid.UUID] = Column(
+        PortableUUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -239,13 +268,9 @@ class ConversationMessage(Base):
 
     __tablename__ = "conversation_messages"
 
-    id = Column(
-        BigInteger().with_variant(Integer, "sqlite"),
-        primary_key=True,
-        autoincrement=True,
-    )
-    conversation_id = Column(
-        UUID(as_uuid=True),
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    conversation_id: Column[uuid.UUID] = Column(
+        PortableUUID(),
         ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
