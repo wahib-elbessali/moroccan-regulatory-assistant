@@ -13,7 +13,7 @@ from .models import Page
 logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = Path("cache/extracted")
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 
 def load_cache(

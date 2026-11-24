@@ -2,16 +2,18 @@
 
 import json
 import logging
+import re
 import time
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 
 from src.agents.orchestrator.prompts import (
-    GRADE_PROMPT,
-    PLAN_PROMPT,
-    REFORMULATE_PROMPT,
+    grade_messages,
+    plan_messages,
+    reformulate_messages,
 )
+from src.agents.orchestrator.validation import coerce_bool, parse_json_or_none
 from src.core.config import cfg
 from src.core.contracts.models import Answer, Passage, ProcessEvent, UserContext
 from src.core.contracts.registry import (
@@ -20,7 +22,7 @@ from src.core.contracts.registry import (
     get_web_agent,
     get_writer,
 )
-from src.ingestion.normalize import normalize_ar  # P1 helper
+from src.ingestion import normalize_ar  # P1 helper
 
 logger = logging.getLogger(__name__)
 
@@ -51,46 +53,96 @@ def over_budget(state: GraphState) -> bool:
     return state["tokens"] >= cfg.agents.max_tokens_per_request
 
 
-def parse_json_or_none(text: str) -> dict | None:
+def messages_text(messages: list[dict[str, str]]) -> str:
+    """All the text sent to the LLM, to count its tokens (P3-15)."""
+    return "\n".join(m["content"] for m in messages)
+
+
+def count_tokens_safe(llm: Any, text: str) -> int:
+    """Tokens of `text` (P3-15). Never raises.
+
+    The real client counts with the Qwen tokenizer, which raises ServiceError when its files are
+    missing (`make models` not run). That must not throw away a reply the LLM already gave, so we
+    fall back to a rough estimate (about 3 characters per token) and log a warning (type only).
+    """
     try:
-        clean = text.strip()
+        return int(llm.count_tokens(text))
+    except Exception as exc:
+        logger.warning("token count estimated: error=%s", type(exc).__name__)
+        return len(text) // 3 + 1
+
+
+def grade_indexes(reply: str) -> list[int]:
+    """The passage numbers a grader reply keeps, tolerant of small-model formats.
+
+    Accepts {"relevant": [1, 2]} (asked), a bare list [1, 2] and numbers written as strings
+    (["1"], as qwen2.5:7b does). Anything else gives an empty list (nothing kept).
+    """
+    try:
+        clean = reply.strip()
         if clean.startswith("```json"):
             clean = clean[7:]
-        if clean.startswith("```"):
+        elif clean.startswith("```"):
             clean = clean[3:]
         if clean.endswith("```"):
             clean = clean[:-3]
-        return json.loads(clean.strip())
+        data = json.loads(clean.strip())
     except Exception:
-        return None
+        return []
+    if isinstance(data, dict):
+        data = data.get("relevant", [])
+    if not isinstance(data, list):
+        return []
+    found: list[int] = []
+    for item in data:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            found.append(item)
+        elif isinstance(item, str) and item.strip().isdigit():
+            found.append(int(item.strip()))
+    return found
 
 
 # --- Nodes ---
 
 
+def _sub_question_text(item: Any) -> str | None:
+    """A planner sub-question as a string.
+
+    Small models sometimes answer {"text": "..."} instead of a plain string; accept that too.
+    Anything else is dropped.
+    """
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        for key in ("text", "question", "query", "sub_question"):
+            if isinstance(item.get(key), str):
+                return item[key]
+    return None
+
+
 def plan_node(state: GraphState) -> dict:
     t0 = time.perf_counter()
-    prompt = PLAN_PROMPT.format(
-        max_sub_questions=cfg.agents.max_sub_questions, question=state["question"]
-    )
+    messages = plan_messages(state["question"], cfg.agents.max_sub_questions)
     llm = get_llm()
     tokens = 0
     try:
-        reply = llm.chat([{"role": "user", "content": prompt}], max_tokens=300)
-        tokens = llm.count_tokens(prompt + reply)
+        reply = llm.chat(messages, max_tokens=300)
+        tokens = count_tokens_safe(llm, messages_text(messages) + reply)
         data = parse_json_or_none(reply)
     except Exception:
         data = None
 
     subs = []
     if data and isinstance(data.get("sub_questions"), list):
-        subs = [q for q in data["sub_questions"] if normalize_ar(q)]
+        subs = [q for q in map(_sub_question_text, data["sub_questions"]) if q and normalize_ar(q)]
 
     if not subs:
         subs = [state["question"]]
 
     sub_questions = subs[: cfg.agents.max_sub_questions]
-    needs_web = bool(data.get("needs_web", False)) if data else False
+    needs_web = coerce_bool(data.get("needs_web"), default=False) if data else False
 
     state["emit"](ProcessEvent(step="plan", data={"sub_questions": sub_questions}))
 
@@ -152,22 +204,20 @@ def grade_node(state: GraphState) -> dict:
         relevant = []
         tokens = 0
     else:
-        doc_blocks = [f'<document n="{i + 1}">{p.chunk.text}</document>' for i, p in enumerate(top)]
-        prompt = GRADE_PROMPT.format(
-            sub_question=state["sub_questions"][state["current_index"]],
-            documents_text="\n".join(doc_blocks),
+        messages = grade_messages(
+            state["sub_questions"][state["current_index"]],
+            [p.chunk.text for p in top],
         )
         llm = get_llm()
         try:
-            reply = llm.chat([{"role": "user", "content": prompt}], max_tokens=100)
-            tokens = llm.count_tokens(prompt + reply)
-            data = parse_json_or_none(reply)
+            reply = llm.chat(messages, max_tokens=100)
+            tokens = count_tokens_safe(llm, messages_text(messages) + reply)
+            rel_indexes = grade_indexes(reply)
         except Exception:
             tokens = 0
-            data = None
+            rel_indexes = []
 
-        rel_indexes = data.get("relevant", []) if data else []
-        relevant = [top[i - 1] for i in rel_indexes if isinstance(i, int) and 1 <= i <= len(top)]
+        relevant = [top[i - 1] for i in dict.fromkeys(rel_indexes) if 1 <= i <= len(top)]
 
     current_passages = dict(state["passages"])
     for p in relevant:
@@ -187,11 +237,14 @@ def grade_node(state: GraphState) -> dict:
         )
     )
 
+    total_tokens = state["tokens"] + tokens
+    # The budget is checked on the total AFTER this call: a grading call that crosses the
+    # budget with nothing relevant still leaves this sub-question unanswered (P3-18).
+    budget_hit = total_tokens >= cfg.agents.max_tokens_per_request
     unanswered = state["unanswered"]
-    if not is_ok and (over_budget(state) or state["iteration"] >= cfg.agents.max_iterations):
+    if not is_ok and (budget_hit or state["iteration"] >= cfg.agents.max_iterations):
         unanswered += 1
 
-    total_tokens = state["tokens"] + tokens
     logger.info(
         "orchestrator.grade",
         extra={
@@ -244,17 +297,26 @@ def next_sub_node(state: GraphState) -> dict:
     }
 
 
+_PROMPT_TAG = re.compile(r"</?\s*(query|question|tried|document)\b[^>]*>", re.IGNORECASE)
+
+
+def clean_query(text: str) -> str:
+    """The reformulated query alone: small models echo our tags, quotes or an extra line."""
+    text = _PROMPT_TAG.sub("", text).strip()
+    first_line = text.splitlines()[0] if text else ""
+    return first_line.strip().strip("\"'«»“”").strip()
+
+
 def reformulate_node(state: GraphState) -> dict:
     t0 = time.perf_counter()
     sub_q = state["sub_questions"][state["current_index"]]
-    tried_str = "\n".join(state["tried"])
-    prompt = REFORMULATE_PROMPT.format(sub_question=sub_q, tried=tried_str)
+    messages = reformulate_messages(sub_q, state["tried"])
 
     llm = get_llm()
     tokens = 0
     try:
-        new_q = llm.chat([{"role": "user", "content": prompt}], max_tokens=60).strip()
-        tokens = llm.count_tokens(prompt + new_q)
+        new_q = clean_query(llm.chat(messages, max_tokens=60))
+        tokens = count_tokens_safe(llm, messages_text(messages) + new_q)
     except Exception:
         new_q = ""
 
@@ -325,6 +387,7 @@ def web_node(state: GraphState) -> dict:
 
     if state["needs_web"] or state["unanswered"] > 0:
         web_agent = get_web_agent()
+        # Only the user's ORIGINAL question goes to the web, never a reformulation (P3-19).
         lookup_res = web_agent.lookup(
             state["question"], state["ctx"], state["language"], state["use_web"]
         )
