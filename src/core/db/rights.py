@@ -1,4 +1,4 @@
-﻿"""Real PostgreSQL-backed DocumentRights service (00-shared Â§6.1, P5-24 to P5-28b)."""
+"""Real PostgreSQL-backed DocumentRights service (00-shared Â§6.1, P5-24 to P5-28b)."""
 
 from contextvars import ContextVar
 from datetime import UTC, datetime

@@ -116,7 +116,7 @@ def test_load_config_valid_yaml_and_env(tmp_path: Path, monkeypatch: pytest.Monk
 
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(
-        "mode: light\n" "retrieval:\n" "  top_k_final: 5\n" "  rerank_top_n: 15\n",
+        "mode: light\nretrieval:\n  top_k_final: 5\n  rerank_top_n: 15\n",
         encoding="utf-8",
     )
 
