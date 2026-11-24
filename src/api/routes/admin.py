@@ -5,12 +5,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from src.api.deps import record_audit_event, require_admin
 from src.core.config import cfg
-from src.core.contracts.enums import AccountRequestStatus
+from src.core.contracts.enums import AccountRequestStatus, RoleName
 from src.core.contracts.errors import Conflict, InvalidInput, NotFound
 from src.core.contracts.models import (
     AccountRequestResponse,
@@ -44,6 +44,19 @@ class ApproveRequestIn(BaseModel):
 
 class SetDocumentRolesIn(BaseModel):
     roles: list[str]
+
+
+def _count_active_admins(db: Session) -> int:
+    admin_role = db.scalars(select(Role).where(Role.name == RoleName.ADMIN.value)).first()
+    if admin_role is None:
+        return 0
+    count = db.scalar(
+        select(func.count(User.id)).where(
+            User.role_id == admin_role.id,
+            User.is_active.is_(True),
+        )
+    )
+    return int(count or 0)
 
 
 def _to_user_response(user: User) -> UserResponse:
@@ -133,7 +146,7 @@ def update_user_role(
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(require_admin),  # noqa: B008
 ) -> UserResponse:
-    """Update user role by role_id (admin only)."""
+    """Update user role by role_id (admin only, P5-31e/f)."""
     user = db.get(User, user_id)
     if user is None:
         raise NotFound("user not found")
@@ -141,6 +154,14 @@ def update_user_role(
     role = db.get(Role, body.role_id)
     if role is None:
         raise NotFound("role not found")
+
+    if user.id == ctx.user_id and user.role_id != role.id:
+        raise Conflict("admin cannot change their own role")
+
+    was_active_admin = bool(user.is_active) and str(user.role.name) == RoleName.ADMIN.value
+    will_be_admin = str(role.name) == RoleName.ADMIN.value
+    if was_active_admin and not will_be_admin and _count_active_admins(db) <= 1:
+        raise Conflict("cannot demote the last active admin")
 
     user.role_id = role.id
     db.commit()
@@ -160,7 +181,7 @@ def update_user_active(
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(require_admin),  # noqa: B008
 ) -> UserResponse:
-    """Activate or deactivate user account instead of deletion."""
+    """Activate or deactivate user account instead of deletion (P5-31e/f)."""
     user = db.get(User, user_id)
     if user is None:
         raise NotFound("user not found")
@@ -168,6 +189,13 @@ def update_user_active(
         raise InvalidInput("is_active field required")
 
     active_value = bool(body["is_active"])
+    if user.id == ctx.user_id and not active_value:
+        raise Conflict("admin cannot deactivate their own account")
+
+    was_active_admin = bool(user.is_active) and str(user.role.name) == RoleName.ADMIN.value
+    if was_active_admin and not active_value and _count_active_admins(db) <= 1:
+        raise Conflict("cannot deactivate the last active admin")
+
     user.is_active = active_value  # type: ignore[assignment]
     db.commit()
     db.refresh(user)

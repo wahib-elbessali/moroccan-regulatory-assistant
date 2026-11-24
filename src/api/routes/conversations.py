@@ -1,4 +1,4 @@
-﻿from datetime import UTC, datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -8,15 +8,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_context
+from src.core.contracts.enums import DocStatus, RoleName
 from src.core.contracts.errors import NotFound
 from src.core.contracts.models import (
+    Answer,
     ConversationDetail,
     ConversationResponse,
     MessageIn,
     MessageResponse,
     UserContext,
 )
-from src.core.db.models import Conversation, ConversationMessage
+from src.core.db.models import Conversation, ConversationMessage, Document
+from src.core.db.rights import list_visible_documents
 from src.core.db.session import get_db
 
 router = APIRouter()
@@ -48,16 +51,76 @@ def _to_response(conv: Conversation) -> ConversationResponse:
     )
 
 
-def _to_message(row: ConversationMessage) -> MessageResponse:
+def _extract_cited_doc_ids(answer_obj: dict[str, Any]) -> list[str]:
+    doc_ids: list[str] = []
+    for key in ("citations", "sources", "cited_documents", "documents"):
+        items = answer_obj.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, str) and item.strip():
+                doc_ids.append(item.strip())
+            elif isinstance(item, dict):
+                val = item.get("doc_id") or item.get("document_id") or item.get("id")
+                if val:
+                    doc_ids.append(str(val).strip())
+    return doc_ids
+
+
+def _is_answer_available(
+    db: Session,
+    ctx: UserContext,
+    answer_obj: dict[str, Any],
+    visible_ids: set[str],
+    docs_by_id: dict[str, Document],
+) -> bool:
+    cited_ids = _extract_cited_doc_ids(answer_obj)
+    for doc_id in cited_ids:
+        if doc_id not in visible_ids:
+            return False
+        doc = docs_by_id.get(doc_id)
+        if doc is None:
+            doc = db.scalars(select(Document).where(Document.id == doc_id)).one_or_none()
+            if doc is None:
+                return False
+        if str(doc.status) != DocStatus.READY.value:
+            return False
+        if ctx.role != RoleName.ADMIN.value and doc_id not in visible_ids:
+            return False
+    return True
+
+
+def _to_message(
+    row: ConversationMessage,
+    db: Session | None = None,
+    ctx: UserContext | None = None,
+    visible_ids: set[str] | None = None,
+    docs_by_id: dict[str, Document] | None = None,
+) -> MessageResponse:
     created_at = row.created_at if isinstance(row.created_at, datetime) else datetime.now(UTC)
     raw_answer = row.answer
     answer_obj: dict[str, Any] = raw_answer if isinstance(raw_answer, dict) else {}
     lang = str(answer_obj.get("language") or "ar")
+
+    available = True
+    final_answer: dict[str, Any] | None = answer_obj if isinstance(row.answer, dict) else None
+
+    if final_answer is not None and db is not None and ctx is not None:
+        available = _is_answer_available(
+            db=db,
+            ctx=ctx,
+            answer_obj=final_answer,
+            visible_ids=visible_ids or set(),
+            docs_by_id=docs_by_id or {},
+        )
+        if not available:
+            final_answer = None
+
     return MessageResponse(
         position=int(row.position),
         question=str(row.question),
-        available=True,
-        answer=answer_obj if isinstance(row.answer, dict) else None,
+        available=available,
+        answer=Answer.model_validate(final_answer) if final_answer is not None else None,
         language=lang,
         created_at=created_at,
     )
@@ -109,9 +172,13 @@ def get_conversation(
     db: Session = Depends(get_db),  # noqa: B008
     ctx: UserContext = Depends(get_current_user_context),  # noqa: B008
 ) -> ConversationDetail:
-    """Retrieve a conversation with all persisted messages in order (P5-45)."""
+    """Retrieve a conversation with all persisted messages in order (P5-45, P5-47)."""
     conv = _get_owned_conversation(db, conversation_id, ctx)
     ordered_rows = sorted(conv.messages, key=lambda m: int(m.position))
+    visible_docs = list_visible_documents(db, ctx)
+    visible_ids = {str(d.id) for d in visible_docs}
+    docs_by_id = {str(d.id): d for d in visible_docs}
+
     created_at = conv.created_at if isinstance(conv.created_at, datetime) else datetime.now(UTC)
     updated_at = conv.updated_at if isinstance(conv.updated_at, datetime) else created_at
     return ConversationDetail(
@@ -119,7 +186,16 @@ def get_conversation(
         title=str(conv.title) if conv.title is not None else None,
         created_at=created_at,
         updated_at=updated_at,
-        messages=[_to_message(row) for row in ordered_rows],
+        messages=[
+            _to_message(
+                row=row,
+                db=db,
+                ctx=ctx,
+                visible_ids=visible_ids,
+                docs_by_id=docs_by_id,
+            )
+            for row in ordered_rows
+        ],
     )
 
 
