@@ -349,6 +349,35 @@ def test_sentence_splitter_handles_all_endings_without_splitting_decimal_numbers
     assert "31.08" in claims[0].text
 
 
+def test_split_claims_inherits_list_introducer_citation_and_skips_introducer() -> None:
+    from src.agents.answer.citations import split_claims
+
+    claims = split_claims(
+        "Les conditions sont les suivantes [1]:\n"
+        "- Première condition\n"
+        "2. Deuxième condition\n"
+        "- Troisième condition [2].",
+        {1, 2},
+    )
+
+    assert [claim.text for claim in claims] == [
+        "- Première condition",
+        "2. Deuxième condition",
+        "- Troisième condition [2].",
+    ]
+    assert [claim.cited for claim in claims] == [[1], [1], [2]]
+
+
+def test_judge_system_prompt_has_single_braces_without_formatting() -> None:
+    from pathlib import Path
+
+    prompt = (
+        Path(__file__).parents[3] / "src" / "agents" / "answer" / "prompts" / "judge_system.md"
+    ).read_text(encoding="utf-8")
+
+    assert "{{" not in prompt
+
+
 def test_excerpt_validator_rejects_more_than_one_sentence() -> None:
     from src.agents.answer.citations import checked_excerpt
 
