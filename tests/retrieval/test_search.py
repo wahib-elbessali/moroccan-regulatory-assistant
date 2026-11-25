@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from p2_helpers import HashModels, hash_vector, make_ctx, make_doc
 from qdrant_client import QdrantClient
 
@@ -35,6 +36,8 @@ from src.core.contracts import (
 from src.ingestion import normalize_ar
 from src.retrieval.bm25 import BM25Index
 from src.retrieval.search import (
+    DEFAULT_RERANK_MAX_CHARS,
+    DEFAULT_RERANK_TOP_N,
     SEARCH_EVENT,
     STAGES,
     Bm25Searcher,
@@ -396,16 +399,25 @@ def test_query_empty_after_normalisation_is_invalid_input(
         build(store).search(query, lecteur_ctx)
 
 
-@pytest.mark.parametrize("top_k", [0, -1, 21, 100], ids=["zero", "negative", "above", "far-above"])
+@pytest.mark.parametrize(
+    "top_k",
+    [0, -1, DEFAULT_RERANK_TOP_N + 1, 100],
+    ids=["zero", "negative", "above", "far-above"],
+)
 def test_top_k_outside_the_range_is_invalid_input(
     store: QdrantStore, lecteur_ctx: UserContext, top_k: int
 ) -> None:
-    """top_k must stay within 1 … rerank_top_n (20 by default). 0 is not a default: None is."""
+    """top_k must stay within 1 … rerank_top_n. 0 is not a default: None is.
+
+    The upper bound is read from ``DEFAULT_RERANK_TOP_N`` rather than written out, so tuning
+    that value — day 8 lowered it for the re-ranker's latency — keeps the case meaningful
+    instead of quietly testing a number that is no longer the edge.
+    """
     with pytest.raises(InvalidInput):
         build(store).search(QUERY, lecteur_ctx, top_k)
 
 
-@pytest.mark.parametrize("top_k", [1, 20], ids=["lowest", "highest"])
+@pytest.mark.parametrize("top_k", [1, DEFAULT_RERANK_TOP_N], ids=["lowest", "highest"])
 def test_top_k_at_the_edges_of_the_range_is_accepted(
     store: QdrantStore, lecteur_ctx: UserContext, top_k: int
 ) -> None:
@@ -526,6 +538,100 @@ def test_reranker_is_given_the_bare_chunk_text_not_the_embedding_text() -> None:
     assert not any(chunks[0].title in text for text in texts_sent)
 
 
+# --- Day 8: only the re-ranker's input is cut (``retrieval.rerank_max_chars``) ----------------
+
+# Longer than any cap worth configuring, and longer than the longest chunk the real corpus
+# produces (1997 characters), so every assertion below is about a text truncation really cuts.
+LONG_TEXT = QUERY + " " + "المادة الطويلة جدا " * 200
+
+
+def _search_one_long_chunk(**kwargs: Any) -> tuple[RecordingModels, Chunk, list[Passage]]:
+    """Searches over a single long chunk; returns the models double, the chunk and the result."""
+    chunk = make_doc("long", texts=[LONG_TEXT], roles=PUBLIC_ROLES)[0]
+    models = RecordingModels()
+    passages = Retrieval(
+        StubStore(vector_hits=[chunk]), StubBm25(), models=models, **kwargs
+    ).search(QUERY, make_ctx("lecteur"))
+    return models, chunk, passages
+
+
+def test_reranker_receives_each_text_cut_to_rerank_max_chars() -> None:
+    """The re-ranker is given the head of the text, exactly ``rerank_max_chars`` characters.
+
+    This is the whole of the day-8 latency change: the model scores one (question, passage)
+    sequence per candidate and pads a batch to its longest member, so the length of the longest
+    candidate is what the re-ranking costs.
+    """
+    models, chunk, _ = _search_one_long_chunk(rerank_max_chars=120)
+    _, texts_sent = models.rerank_calls[0]
+    assert texts_sent == [chunk.text[:120]]
+    assert len(texts_sent[0]) == 120
+    assert len(chunk.text) > 120  # the cut really happened
+
+
+def test_every_candidate_is_cut_not_only_the_first() -> None:
+    """A batch is padded to its longest member, so one uncut candidate would undo the saving."""
+    chunks = make_doc("long", texts=[LONG_TEXT] * 4, roles=PUBLIC_ROLES)
+    models = RecordingModels()
+    Retrieval(StubStore(vector_hits=chunks), StubBm25(), models=models, rerank_max_chars=90).search(
+        QUERY, make_ctx("lecteur")
+    )
+    _, texts_sent = models.rerank_calls[0]
+    assert [len(text) for text in texts_sent] == [90] * 4
+
+
+@pytest.mark.parametrize("length", [1, 50, DEFAULT_RERANK_MAX_CHARS], ids=["one", "short", "exact"])
+def test_a_text_no_longer_than_the_limit_is_sent_unchanged(length: int) -> None:
+    """Short passages — most of the corpus — are untouched, the boundary itself included."""
+    text = "ا" * length
+    chunk = make_doc("short", texts=[text], roles=PUBLIC_ROLES)[0]
+    models = RecordingModels()
+    Retrieval(StubStore(vector_hits=[chunk]), StubBm25(), models=models).search(
+        QUERY, make_ctx("lecteur")
+    )
+    _, texts_sent = models.rerank_calls[0]
+    assert texts_sent == [text]
+
+
+def test_truncation_leaves_the_candidate_chunks_untouched() -> None:
+    """The cut lives in the argument of the model call; it never writes back to the ``Chunk``."""
+    original = make_doc("long", texts=[LONG_TEXT], roles=PUBLIC_ROLES)[0]
+    before = original.model_copy(deep=True)
+    models = RecordingModels()
+    Retrieval(
+        StubStore(vector_hits=[original]), StubBm25(), models=models, rerank_max_chars=100
+    ).search(QUERY, make_ctx("lecteur"))
+    assert original.text == LONG_TEXT
+    assert original == before
+
+
+def test_returned_passage_carries_the_complete_text() -> None:
+    """Regression (day 8): ``Passage.chunk.text`` is the **whole** text, however short the cut.
+
+    P4 quotes this text in its citations and checks that the quote appears in it (``min_excerpt
+    _chars``), so a passage shortened to what the re-ranker happened to see would break every
+    citation drawn from the tail of an article. The re-ranker's input and the returned passage
+    must stay two different things, and this test is what says so.
+    """
+    _, chunk, passages = _search_one_long_chunk(rerank_max_chars=100)
+    assert [p.chunk.text for p in passages] == [LONG_TEXT]
+    assert passages[0].chunk == chunk
+    assert len(passages[0].chunk.text) > 100
+
+
+def test_complete_text_survives_the_reranker_fallback() -> None:
+    """P2-19: the re-ranker being down changes the order and the score, never the text."""
+    chunk = make_doc("long", texts=[LONG_TEXT], roles=PUBLIC_ROLES)[0]
+    models = NoReranker()
+    passages = Retrieval(
+        StubStore(vector_hits=[chunk]), StubBm25(), models=models, rerank_max_chars=100
+    ).search(QUERY, make_ctx("lecteur"))
+    assert [p.chunk.text for p in passages] == [LONG_TEXT]
+    # The cut text is still what went out: a fallback is not a reason to send more.
+    _, texts_sent = models.rerank_calls[0]
+    assert len(texts_sent[0]) == 100
+
+
 def test_reranker_is_not_called_when_nothing_was_found() -> None:
     """An empty result costs no model call (P2-17)."""
     models = RecordingModels()
@@ -565,7 +671,7 @@ def test_bm25_candidate_dropped_by_the_recheck_is_never_returned(
     store.index(hidden)  # indexed, never shown
 
     retrieval = build(store, bm25_ids=[hidden[0].chunk_id])
-    passages = retrieval.search(QUERY, lecteur_ctx, 20)
+    passages = retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N)
 
     returned = {p.chunk.chunk_id for p in passages}
     assert hidden[0].chunk_id not in returned
@@ -577,7 +683,7 @@ def test_bm25_candidate_restricted_to_another_role_is_never_returned(
 ) -> None:
     internal = shown(store, make_doc("internal", texts=GRADED_TEXTS, roles=INTERNAL_ROLES))
     retrieval = build(store, bm25_ids=[c.chunk_id for c in internal])
-    assert retrieval.search(QUERY, lecteur_ctx, 20) == []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) == []
 
 
 def test_surviving_bm25_candidates_keep_their_bm25_order() -> None:
@@ -722,15 +828,15 @@ def test_rights_methods_work_through_the_real_store(
     retrieval = build(store)
     doc_id = chunks[0].doc_id
 
-    assert retrieval.search(QUERY, lecteur_ctx, 20) == []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) == []
     retrieval.update_roles(doc_id, PUBLIC_ROLES)
-    assert retrieval.search(QUERY, lecteur_ctx, 20) != []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) != []
     retrieval.hide(doc_id)
-    assert retrieval.search(QUERY, lecteur_ctx, 20) == []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) == []
     retrieval.show(doc_id)
-    assert retrieval.search(QUERY, lecteur_ctx, 20) != []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) != []
     retrieval.delete(doc_id)
-    assert retrieval.search(QUERY, lecteur_ctx, 20) == []
+    assert retrieval.search(QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N) == []
 
 
 # --- Construction -----------------------------------------------------------------------------
@@ -755,9 +861,20 @@ def test_missing_models_client_is_refused() -> None:
         {"top_k_final": 0},
         {"rerank_top_n": 0},
         {"rrf_k": 0},
+        {"rerank_max_chars": 0},
+        {"rerank_max_chars": -1},
         {"top_k_final": 10, "rerank_top_n": 5},
     ],
-    ids=["vector", "bm25", "final", "rerank", "rrf_k", "rerank-below-final"],
+    ids=[
+        "vector",
+        "bm25",
+        "final",
+        "rerank",
+        "rrf_k",
+        "max-chars-zero",
+        "max-chars-negative",
+        "rerank-below-final",
+    ],
 )
 def test_impossible_configuration_is_refused(kwargs: dict[str, int]) -> None:
     with pytest.raises(ValueError):
@@ -766,10 +883,26 @@ def test_impossible_configuration_is_refused(kwargs: dict[str, int]) -> None:
 
 def test_defaults_match_config_yaml() -> None:
     """The defaults mirror config.yaml's ``retrieval:`` values, for callers that build a
-    ``Retrieval`` directly; ``real_retrieval()`` passes ``cfg.retrieval`` in instead."""
+    ``Retrieval`` directly; ``real_retrieval()`` passes ``cfg.retrieval`` in instead.
+
+    config.yaml is read rather than copied here: the two sets of numbers are a mirror, and a
+    test that repeated them would go on passing after one side was tuned and the other was
+    not. Every parameter the constructor takes is checked, so a new ``retrieval.*`` key added
+    to the file without a default here — or the other way round — fails this test.
+    """
+    settings = yaml.safe_load(
+        (Path(__file__).resolve().parents[2] / "config.yaml").read_text(encoding="utf-8")
+    )["retrieval"]
     retrieval = Retrieval(StubStore(), StubBm25(), models=RecordingModels())
-    assert (retrieval.top_k_vector, retrieval.top_k_bm25, retrieval.rrf_k) == (30, 30, 60)
-    assert (retrieval.top_k_final, retrieval.rerank_top_n) == (10, 20)
+    for key in (
+        "top_k_vector",
+        "top_k_bm25",
+        "rrf_k",
+        "top_k_final",
+        "rerank_top_n",
+        "rerank_max_chars",
+    ):
+        assert getattr(retrieval, key) == settings[key], key
 
 
 # --- The merged implementations fit the seams the pipeline declares ----------------------------
@@ -974,7 +1107,7 @@ def test_t15_stale_bm25_still_cannot_return_a_hidden_chunk(
     target_id = target[0].chunk_id
 
     # The first search builds the BM25 snapshot while the target is visible.
-    before = retrieval.search(STALE_QUERY, lecteur_ctx, 20)
+    before = retrieval.search(STALE_QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N)
     assert target_id in {p.chunk.chunk_id for p in before}
     assert bm25.search(tokens, lecteur_ctx, 30) == [target_id]  # the keyword half found it
     version_before = read_version(version_file)
@@ -985,7 +1118,7 @@ def test_t15_stale_bm25_still_cannot_return_a_hidden_chunk(
     assert read_version(version_file) == version_before  # the index really is stale
     assert bm25.search(tokens, lecteur_ctx, 30) == [target_id]  # still offering a hidden chunk
 
-    after = retrieval.search(STALE_QUERY, lecteur_ctx, 20)
+    after = retrieval.search(STALE_QUERY, lecteur_ctx, DEFAULT_RERANK_TOP_N)
     returned = {p.chunk.chunk_id for p in after}
     assert target_id not in returned  # P2-14: the re-check dropped it
     assert returned & {c.chunk_id for c in filler}  # the rest of the corpus still answers

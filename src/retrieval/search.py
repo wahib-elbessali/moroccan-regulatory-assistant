@@ -7,12 +7,20 @@ The pipeline joins the two halves of the search, each owned by another slice of 
     -> bm25.search(tokenize(normalize_ar(query)), ctx, top_k_bm25)   # keywords, filter inside
     -> store.recheck(bm25 ids, flt)                                  # P2-14
     -> rrf([vector ids, bm25 ids], rrf_k)[:rerank_top_n]             # P2-15
-    -> models.rerank(query, [c.text for c in candidates])            # P2-16
+    -> models.rerank(query, [c.text[:rerank_max_chars] for c in candidates])   # P2-16
     -> top_k Passages, rank 1, 2, 3 ...                              # P2-17
 
 The visibility rule (00-shared §6.3) is applied **inside** both indexes, before scoring: this
 module never filters results afterwards. The query is embedded as typed and given to BM25
 normalized and tokenized (P2-18).
+
+Only the **re-ranker's input** is shortened, to ``rerank_max_chars`` characters per candidate.
+The re-ranker reads the question and the passage together as one sequence and pads a batch to
+its longest member, so its cost follows the longest candidate rather than the average one: on
+the real corpus (chunks up to 2000 characters) 20 full passages took 61 s, the same 20 cut to
+500 characters 16 s. The ``Passage`` objects handed back carry the **complete** ``Chunk``,
+untouched — P4 quotes ``passage.chunk.text`` in its citations — so nothing outside this one
+model call ever sees a shortened text.
 
 When a model is down the search degrades instead of failing (P2-19): no embeddings means BM25
 only, no re-ranker means the RRF order with the RRF scores. Qdrant has no fallback — the
@@ -54,7 +62,8 @@ DEFAULT_TOP_K_VECTOR = 30  # retrieval.top_k_vector
 DEFAULT_TOP_K_BM25 = 30  # retrieval.top_k_bm25
 DEFAULT_RRF_K = 60  # retrieval.rrf_k
 DEFAULT_TOP_K_FINAL = 10  # retrieval.top_k_final
-DEFAULT_RERANK_TOP_N = 20  # retrieval.rerank_top_n
+DEFAULT_RERANK_TOP_N = 16  # retrieval.rerank_top_n
+DEFAULT_RERANK_MAX_CHARS = 300  # retrieval.rerank_max_chars
 
 
 # The one structured line per search (P2-29). ``SEARCH_EVENT`` is the message and the ``event``
@@ -182,6 +191,9 @@ class Retrieval:
         top_k_final: Default number of passages ``search`` returns (``retrieval.top_k_final``).
         rerank_top_n: Fused chunks sent to the re-ranker, and the largest ``top_k`` ``search``
             accepts (``retrieval.rerank_top_n``).
+        rerank_max_chars: How much of each candidate's text is sent to the re-ranker
+            (``retrieval.rerank_max_chars``). It bounds the re-ranker's work; it never shortens
+            a ``Passage``, whose ``Chunk`` is always the complete one.
 
     Raises:
         ValueError: No models client could be found, a limit is below 1, or ``rerank_top_n`` is
@@ -199,6 +211,7 @@ class Retrieval:
         rrf_k: int = DEFAULT_RRF_K,
         top_k_final: int = DEFAULT_TOP_K_FINAL,
         rerank_top_n: int = DEFAULT_RERANK_TOP_N,
+        rerank_max_chars: int = DEFAULT_RERANK_MAX_CHARS,
     ) -> None:
         resolved = models if models is not None else getattr(store, "models", None)
         if resolved is None:
@@ -207,6 +220,8 @@ class Retrieval:
             raise ValueError("top_k_vector, top_k_bm25, top_k_final and rerank_top_n must be >= 1")
         if rrf_k < 1:
             raise ValueError("rrf_k must be at least 1")
+        if rerank_max_chars < 1:
+            raise ValueError("rerank_max_chars must be at least 1")
         if rerank_top_n < top_k_final:
             raise ValueError("rerank_top_n must be at least top_k_final")
         self.store = store
@@ -217,6 +232,7 @@ class Retrieval:
         self.rrf_k = rrf_k
         self.top_k_final = top_k_final
         self.rerank_top_n = rerank_top_n
+        self.rerank_max_chars = rerank_max_chars
 
     # --- Search (§3.3, §6.2) ------------------------------------------------------------------
 
@@ -401,6 +417,19 @@ class Retrieval:
         The bare ``text`` of each chunk is sent, not its embedding text: the re-ranker reads the
         question and the passage together, and the headings would only add noise.
 
+        Each text is cut to its first ``rerank_max_chars`` characters. This is the one place in
+        the pipeline where a text is shortened, and it reaches no further than the argument of
+        this one call: ``candidates`` holds the ``Chunk`` objects the ``Passage`` list is built
+        from, and they are read, never rewritten, so ``Passage.chunk.text`` stays the complete
+        text P4 cites. Slicing a ``str`` returns a new ``str``, so nothing is mutated in place.
+
+        The cut is what brings the re-ranker's time down (day 8). The model scores one
+        (question, passage) sequence per candidate and a batch is padded to its longest member,
+        so the cost follows the longest candidate: on the real corpus, where a chunk runs to
+        2000 characters, 20 full passages took 61 s and the same 20 cut to 500 characters 16 s.
+        Legal chunks also carry what identifies them — the article heading and the opening of
+        its provisions — at the start, so the head of the text is the part worth scoring.
+
         As in ``_embed``, the ``try`` covers the model call alone: a wrong number of scores is a
         broken answer, not an unavailable service, and it must still fail (§7).
 
@@ -412,8 +441,9 @@ class Retrieval:
             ServiceError: The service answered with a different number of scores than there were
                 candidates, which would pair scores with the wrong chunks.
         """
+        texts = [chunk.text[: self.rerank_max_chars] for chunk in candidates]
         try:
-            scores = self.models.rerank(query, [chunk.text for chunk in candidates])  # P6
+            scores = self.models.rerank(query, texts)  # P6
         except ServiceError:
             # No query or chunk text in the warning (P2-29).
             logger.warning(

@@ -36,7 +36,7 @@ CHUNKS_FILE = "chunks.jsonl"
 # values it wants (tests point data_dir at a temporary folder).
 DEFAULT_DATA_DIR = "data/processed"  # fakes.data_dir
 DEFAULT_TOP_K_FINAL = 10  # retrieval.top_k_final
-DEFAULT_RERANK_TOP_N = 20  # retrieval.rerank_top_n
+DEFAULT_RERANK_TOP_N = 16  # retrieval.rerank_top_n
 
 # A stored record is the chunk's JSON fields plus "hidden"; "hidden" is kept out of the Chunk.
 Record = dict[str, Any]

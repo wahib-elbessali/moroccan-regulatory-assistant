@@ -48,7 +48,7 @@ from src.core.contracts import (
     UserContext,
     registry,
 )
-from src.core.contracts.fakes.retrieval import FakeRetrieval
+from src.core.contracts.fakes.retrieval import DEFAULT_RERANK_TOP_N, FakeRetrieval
 from src.core.db.base import Base
 from src.core.db.models import Role, User
 from src.core.db.session import get_db
@@ -318,13 +318,14 @@ def test_r6_query_empty_after_normalisation_is_422(client: TestClient, query: st
     assert response.json()["code"] == "invalid_input"
 
 
-@pytest.mark.parametrize("top_k", [0, -1, 21, 1000])
+@pytest.mark.parametrize("top_k", [0, -1, DEFAULT_RERANK_TOP_N + 1, 1000])
 def test_r7_top_k_out_of_range_is_422(client: TestClient, top_k: int) -> None:
     """R7: ``top_k`` outside ``1 … rerank_top_n`` is 422 through ``InvalidInput``.
 
-    ``rerank_top_n`` is 20 for ``FakeRetrieval``'s default, so 21 is already too large. The
-    route adds no pydantic bound of its own: the check, and so the error format, stay the
-    pipeline's (P2-11).
+    The first value above the range is read from ``FakeRetrieval``'s own default, which mirrors
+    ``retrieval.rerank_top_n``, so tuning that value keeps this case on the real edge. The route
+    adds no pydantic bound of its own: the check, and so the error format, stay the pipeline's
+    (P2-11).
     """
     response = client.post("/search", json={"query": QUERY, "top_k": top_k})
 
@@ -425,7 +426,9 @@ def corpus(fake_retrieval: FakeRetrieval, lecteur_ctx: UserContext) -> FakeRetri
 
 def titles_for(ctx: UserContext) -> set[str]:
     """The document titles a search through the route returns for this user."""
-    response = TestClient(build_app(ctx)).post("/search", json={"query": QUERY, "top_k": 20})
+    response = TestClient(build_app(ctx)).post(
+        "/search", json={"query": QUERY, "top_k": DEFAULT_RERANK_TOP_N}
+    )
     assert response.status_code == 200
     return {item["chunk"]["title"] for item in response.json()}
 
@@ -463,7 +466,7 @@ def test_r13_the_internal_text_never_appears_in_a_lecteur_response(
 ) -> None:
     """Not the title, not the text, not a hint: the whole body is checked."""
     response = TestClient(build_app(lecteur_ctx)).post(
-        "/search", json={"query": QUERY, "top_k": 20}
+        "/search", json={"query": QUERY, "top_k": DEFAULT_RERANK_TOP_N}
     )
 
     assert INTERNAL_TEXT not in response.text
