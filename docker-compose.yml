@@ -40,7 +40,9 @@ services:
       - sh
       - -c
       - >
-        sed 's/^  leak_index: fake/  leak_index: real/' /app/config.yaml > /run/config.stack.yaml &&
+        sed -e 's/^  leak_index: fake/  leak_index: real/'
+        -e "s/^mode: .*/mode: $${MODE:-local}/"
+        /app/config.yaml > /run/config.stack.yaml &&
         grep -q '^  leak_index: real' /run/config.stack.yaml &&
         exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     healthcheck:

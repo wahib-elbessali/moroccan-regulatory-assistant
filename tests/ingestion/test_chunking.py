@@ -522,3 +522,110 @@ def test_sgg_7435_invariants_and_text_boundaries() -> None:
         # 3. Hierarchy non-empty for BO chunks except the issue preamble (p < 4)
         if c.page_start >= 4:
             assert len(c.hierarchy) >= 1, f"Chunk {idx} on page {c.page_start} has empty hierarchy"
+
+
+def test_split_heading_and_spaced_madda_normalization() -> None:
+    """Fix (a): Test normalization of split headings, space inside 'المادة', and preamble citations."""
+    sample = (
+        "مرسوم رقم 2.25.605 صادر في 16 أكتوبر 2025\n"
+        "بتطبيق أحكام المادة 7 من القانون رقم 65.15\n"
+        "بناء على القانون رقم 65.15، ولا سيما\n"
+        "المادة 7 ؛ منه\n"
+        "رسم ما يلي:\n"
+        "ا\n"
+        "لمادة الأولى\n"
+        "يقصد بالسلطة المختصة في مدلول هذا المرسوم ما يلي.\n"
+        "ا لمادة الثانية\n"
+        "يجب على كل مؤسسة للرعاية الاجتماعية إيداع تصريح.\n"
+        "الماد ة 3\n"
+        "يجب على مؤسسة الرعاية تقديم الخدمات وفق المعايير.\n"
+        "ا\n"
+        "لمادة السا\n"
+        "بعة\n"
+        "يسند تنفيذ هذا المرسوم إلى وزير الداخلية."
+    )
+    pages = [Page(number=1, text=sample)]
+    chunks = chunk_document("test_split_madda", pages)
+
+    articles = [c.article for c in chunks]
+    # Preamble should not be extracted as 'المادة 7'
+    assert "المادة 7" not in articles
+    # Preamble chunk exists
+    assert chunks[0].article is None
+    # All 4 articles are properly recognized
+    assert "المادة الأولى" in articles
+    assert "المادة الثانية" in articles
+    assert "المادة 3" in articles
+    assert "المادة السابعة" in articles
+    assert len(chunks) == 5  # preamble + 4 articles
+
+
+def test_fasl_headings_treated_as_articles_when_no_madda_body() -> None:
+    """Fix (b): Test that 'الفصل + number/ordinal' is treated as article unit when text has no 'المادة' articles."""
+    sample = (
+        "ظهير شريف رقم 1.58.250 بسن قانون الجنسية المغربية\n"
+        "الباب الأول: أحكام عامة\n"
+        "الفصل الأول: مصادر القانون\n"
+        "تحدد الأحكام المتعلقة بالجنسية المغربية بمقتضى القانون.\n"
+        "الفصل الثاني: التطبيق في الزمان\n"
+        "تسري المقتضيات الجديدة على الحالات المستقبلية.\n"
+        "الفصل 3\n"
+        "تثبت الجنسية المغربية الأصلية بحكم القانون.\n"
+        "الباب الثاني: الجنسية الأصلية\n"
+        "الفصل السادس: النسب\n"
+        "يعتبر مغربيا الولد المولود من أب مغربي أو أم مغربية.\n"
+        "هامش إحالة: المادة الأولى من الظهير الشريف رقم 1.07.80"
+    )
+    pages = [Page(number=1, text=sample)]
+    chunks = chunk_document("test_fasl_articles", pages)
+
+    articles = [c.article for c in chunks]
+    assert chunks[0].article is None  # Preamble
+    assert "الفصل الأول" in articles
+    assert "الفصل الثاني" in articles
+    assert "الفصل 3" in articles
+    assert "الفصل السادس" in articles
+
+    # Verify hierarchy is preserved
+    fasl6_chunk = next(c for c in chunks if c.article == "الفصل السادس")
+    assert any("الباب الثاني" in h for h in fasl6_chunk.hierarchy)
+
+
+def test_adala_006_regression_all_seven_articles() -> None:
+    """Regression test for adala_006.pdf: Decree must yield articles 1 to 7 without false 'المادة 7' citation."""
+    p = Path("data/raw/public/adala_006.pdf")
+    if not p.is_file():
+        return
+
+    fake_ocr = FakeOCRClient()
+    pages = extract(p, ocr_client=fake_ocr)
+    chunks = chunk_document("adala_006", pages)
+
+    articles = [c.article for c in chunks]
+    assert "المادة 7" not in articles
+    assert "المادة الأولى" in articles
+    assert "المادة الثانية" in articles
+    assert "المادة الثالثة" in articles
+    assert "المادة الرابعة" in articles
+    assert "المادة الخامسة" in articles
+    assert "المادة السادسة" in articles
+    assert "المادة السابعة" in articles
+    assert len(chunks) == 8  # preamble + 7 articles
+
+
+def test_adala_002_regression_nationality_code_fasl() -> None:
+    """Regression test for adala_002.pdf: Nationality code articles must be chunked on 'الفصل'."""
+    p = Path("data/raw/public/adala_002.pdf")
+    if not p.is_file():
+        return
+
+    fake_ocr = FakeOCRClient()
+    pages = extract(p, ocr_client=fake_ocr)
+    chunks = chunk_document("adala_002", pages)
+
+    fasl_articles = [c.article for c in chunks if c.article and c.article.startswith("الفصل")]
+    # Nationality code has 45 chapters; chunker should yield >= 35 chapter chunks
+    assert len(fasl_articles) >= 35
+    # Should not have dozens of chunks labeled 'المادة الأولى'
+    madda_articles = [c.article for c in chunks if c.article and c.article.startswith("المادة")]
+    assert len(madda_articles) == 0
