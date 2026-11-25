@@ -356,16 +356,20 @@ def test_split_claims_inherits_list_introducer_citation_and_skips_introducer() -
         "Les conditions sont les suivantes [1]:\n"
         "- Première condition\n"
         "2. Deuxième condition\n"
-        "- Troisième condition [2].",
+        "12 - Troisième condition\n"
+        "٣ ) Quatrième condition\n"
+        "- Cinquième condition [2].",
         {1, 2},
     )
 
     assert [claim.text for claim in claims] == [
         "- Première condition",
         "2. Deuxième condition",
-        "- Troisième condition [2].",
+        "12 - Troisième condition",
+        "٣ ) Quatrième condition",
+        "- Cinquième condition [2].",
     ]
-    assert [claim.cited for claim in claims] == [[1], [1], [2]]
+    assert [claim.cited for claim in claims] == [[1], [1], [1], [1], [2]]
 
 
 def test_judge_system_prompt_has_single_braces_without_formatting() -> None:
@@ -376,6 +380,8 @@ def test_judge_system_prompt_has_single_braces_without_formatting() -> None:
     ).read_text(encoding="utf-8")
 
     assert "{{" not in prompt
+    assert "word for word from the cited <source> text" in prompt
+    assert "Never copy or paraphrase the claim as the excerpt" in prompt
 
 
 def test_excerpt_validator_rejects_more_than_one_sentence() -> None:
@@ -391,6 +397,40 @@ def test_excerpt_validator_rejects_more_than_one_sentence() -> None:
         )
         is None
     )
+
+
+def test_excerpt_validator_unescapes_html_entities_from_judge() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = 'L\'Union & "quotes" <details>'
+    judge_excerpt = "L&#x27;Union &amp; &quot;quotes&quot; &lt;details&gt;"
+
+    assert checked_excerpt(judge_excerpt, source, min_chars=10) == source
+
+
+def test_excerpt_validator_accepts_multiline_excerpt_from_pdf_source() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = "يُحَدِّدُ المبلغَ\nالشهري للدعم في 350\nدرهما عن كل طفل يتيم."
+    excerpt = "يحدد المبلغ الشهري\nللدعم في 350 درهما"
+
+    assert checked_excerpt(excerpt, source, min_chars=10) == (
+        "يُحَدِّدُ المبلغَ الشهري للدعم في 350 درهما عن كل طفل يتيم."
+    )
+
+
+def test_renumber_preserves_line_breaks_between_list_items() -> None:
+    from src.agents.answer.citations import Claim, Source, renumber
+
+    claims = [
+        Claim(text="- Premier élément.", cited=[1], excerpt="Une règle source.", source_n=1),
+        Claim(text="- Deuxième élément.", cited=[1], excerpt="Une autre règle source.", source_n=1),
+    ]
+    sources = [Source(number=1, kind="corpus", title="Loi", text="Texte source")]
+
+    answer, _ = renumber(claims, sources)
+
+    assert answer == "- Premier élément [1].\n- Deuxième élément [1]."
 
 
 def test_t10_invalid_judge_json_uses_word_check_fallback(

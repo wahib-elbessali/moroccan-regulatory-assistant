@@ -161,12 +161,22 @@ def test_llm_narrator_streams_with_configured_model_and_token_limit(monkeypatch)
     messages, model, max_tokens = llm.calls[0]
     assert model == "narration-test-model"
     assert max_tokens == 42
-    assert "French" in messages[0]["content"]
+    assert "français" in messages[0]["content"]
     assert '"step":"search"' in messages[1]["content"]
     assert '"count":2' in messages[1]["content"]
-    assert "one or two short sentences" in messages[0]["content"]
-    assert "Do not answer the user's question" in messages[0]["content"]
-    assert "do not state any legal fact" in messages[0]["content"]
+    assert "Écris une ou deux phrases courtes" in messages[0]["content"]
+    assert "Ne réponds pas à la question" in messages[0]["content"]
+    assert "aucun fait juridique" in messages[0]["content"]
+
+
+def test_arabic_narration_uses_an_arabic_system_prompt() -> None:
+    from src.agents.answer.narrator import _messages
+
+    messages = _messages(ProcessEvent(step=StepType.WRITE, data={}), "ar")
+
+    assert "العربية الفصحى" in messages[0]["content"]
+    assert "استخدم حدث العملية" in messages[0]["content"]
+    assert "You narrate" not in messages[0]["content"]
 
 
 def test_llm_narrator_streams_using_shared_fake_llm_client(monkeypatch) -> None:
