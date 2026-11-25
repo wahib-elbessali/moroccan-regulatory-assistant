@@ -30,3 +30,25 @@ An agentic RAG assistant that answers questions about Moroccan regulation (laws,
 | Interface | Chat, document management and administration screens, right-to-left display |
 
 Details: [`docs/architecture.md`](docs/architecture.md).
+
+
+## Running the stack
+
+You need Docker with Compose. The commands below are `make` targets; on Windows without `make`, run the command in the last column instead.
+
+| Target | What it does | Without `make` |
+|---|---|---|
+| `make models` | Downloads every model once (language models, embeddings, re-ranker, tokenizer files, OCR) into Docker volumes. Needs internet; after it has run, the stack starts with the internet off. | `python services/download_models.py` |
+| `make up` | Starts the whole stack in `local` mode and waits until every service is healthy. | `docker compose up -d --wait` |
+| `make up-light` | Same, in `light` mode: a smaller language model, for modest machines. | cmd: `set MODE=light`, then `docker compose up -d --wait`, then `set MODE=`. PowerShell: `$env:MODE="light"; docker compose up -d --wait; $env:MODE=""` |
+| `make down` | Stops and removes the containers. The volumes (databases, models, uploads) are kept. | `docker compose down` |
+| `make test-isolation` | Checks that only `web-search` and `searxng` can reach the internet (tests T1 to T3). The stack must be up. | `pytest tests/sovereignty/test_network_isolation.py -v` |
+| `make seed` | Loads the corpus of `data/raw` through the ingestion command line, inside `api`, then marks the public documents as non-blocking for the web leak filter. The stack must be up. `make seed OWNER=<uuid>` sets the owner of the uploaded rows. | `docker compose exec api python -m src.ingestion.cli seed --owner <uuid> --raw-dir /app/data/raw`, then `docker compose exec -T api python - < scripts\leak_unblock_public.py` |
+
+First start:
+
+1. Copy `.env.example` to `.env` and fill in the values. `.env` is never committed.
+2. `make models` (once, with internet).
+3. `make up`, then `make seed`.
+
+The gateway publishes port 3000 (interface) and port 8000 (API) on the host; every other service stays on a network with no published port. Details of the three networks: [`docs/specs/P6-sovereignty.md`](docs/specs/P6-sovereignty.md).
