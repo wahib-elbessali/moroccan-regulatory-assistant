@@ -16,12 +16,16 @@ __all__ = ["real_llm", "real_models", "real_ocr"]
 
 
 def real_llm() -> "OllamaClient":
-    """The real ``LLMClient``: Ollama, with the context window set by ``llm.num_ctx``."""
+    """The real ``LLMClient``: Ollama, with the context window set by ``llm.num_ctx``.
+
+    In ``light`` mode it serves ``llm.model_light``, otherwise ``llm.model`` (P6 spec §6.2).
+    """
     from src.core.config import cfg  # imported here: loading the config needs the full .env
 
     from .ollama import OllamaClient
 
-    return OllamaClient(cfg.llm.base_url, model=cfg.llm.model, num_ctx=cfg.llm.num_ctx)
+    model = cfg.llm.model_light if cfg.mode == "light" else cfg.llm.model
+    return OllamaClient(cfg.llm.base_url, model=model, num_ctx=cfg.llm.num_ctx)
 
 
 def real_ocr() -> "HttpOCRClient":
