@@ -1,11 +1,14 @@
 """``CONTRACT_<NAME>`` environment variables override ``contracts`` from config.yaml."""
 
+import logging
 import os
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-from src.core.config import contract_overrides, load_config
+from src.api import main
+from src.core.config import contract_overrides, load_config, log_contract_overrides
 
 
 @pytest.fixture
@@ -50,3 +53,35 @@ def test_env_with_a_bad_value_is_refused(
 def test_unrelated_and_bare_prefix_variables_are_ignored() -> None:
     env = {"CONTRACT_": "real", "CONTRACTS": "real", "PATH": "/bin", "CONTRACT_OCR": "real"}
     assert contract_overrides(env) == {"ocr": "real"}
+
+
+def test_overrides_are_logged_in_one_warning(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CONTRACT_OCR", "real")
+    monkeypatch.setenv("CONTRACT_LLM", "fake")
+    with caplog.at_level(logging.WARNING, logger="test_overrides"):
+        log_contract_overrides(logging.getLogger("test_overrides"))
+    assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+        ("WARNING", "contracts overridden from the environment: llm=fake, ocr=real")
+    ]
+
+
+def test_nothing_is_logged_without_overrides(
+    config_file: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="test_overrides"):
+        log_contract_overrides(logging.getLogger("test_overrides"))
+    assert caplog.records == []
+
+
+def test_the_api_logs_the_overrides_once_when_it_starts(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CONTRACT_LLM", "fake")
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    with caplog.at_level(logging.WARNING, logger="rag_api"), TestClient(main.app) as client:
+        client.get("/health")
+        client.get("/health")
+    logged = [r.getMessage() for r in caplog.records if "overridden" in r.getMessage()]
+    assert logged == ["contracts overridden from the environment: llm=fake"]
