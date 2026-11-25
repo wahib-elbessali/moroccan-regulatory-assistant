@@ -61,7 +61,7 @@ web:
 leak:
   ngram: 4
   overlap_threshold: 0.2      # starting value, tuned on the leak tests
-  min_hits: 3
+  min_hits: 1
   max_df: 20
 ocr:
   base_url: http://ocr:8070
