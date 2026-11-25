@@ -42,13 +42,24 @@ SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
 
 
 def sanitize_text(text: str) -> str:
-    """Normalize via NFKC and strip Unicode Cc control characters (except \\n and \\t).
+    """Normalize via NFKC, strip tatweel, and strip Unicode Cc control characters.
 
     Removes hidden control codes (e.g., \\x08 backspace found in Bulletin Officiel headers)
+    and removes U+0640 (kashida/tatweel) including adjacent single spaces connecting letters,
     while strictly preserving newlines, tabs, Arabic characters, and punctuation.
     """
     normalized = unicodedata.normalize("NFKC", text)
-    return "".join(c for c in normalized if c in ("\n", "\t") or unicodedata.category(c) != "Cc")
+    filtered = "".join(
+        c for c in normalized if c in ("\n", "\t") or unicodedata.category(c) != "Cc"
+    )
+    # Tatweel removal and Arabic word repair (§6.2, P1):
+    # 1. Tatweel connecting two Arabic letters with optional trailing space:
+    filtered = re.sub(r"(?<=[\u0621-\u064A])\u0640+[ ]?(?=[\u0621-\u064A])", "", filtered)
+    # 2. Tatweel connecting two Arabic letters with optional leading space:
+    filtered = re.sub(r"(?<=[\u0621-\u064A])[ ]?\u0640+(?=[\u0621-\u064A])", "", filtered)
+    # 3. Any isolated or remaining tatweel:
+    filtered = re.sub(r"\u0640+", "", filtered)
+    return filtered
 
 
 _sanitize_text = sanitize_text

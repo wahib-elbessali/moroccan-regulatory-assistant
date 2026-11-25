@@ -23,12 +23,10 @@ def get_llm() -> LLMClient:
     return registry_get_llm()
 
 
-def _language_name(language: str) -> str:
-    return "Modern Standard Arabic" if language == "ar" else "French"
-
-
 def _messages(event: ProcessEvent, language: str) -> list[dict[str, str]]:
-    system = (_PROMPTS / "narrator_system.md").read_text(encoding="utf-8")
+    if language not in {"fr", "ar"}:
+        raise ValueError("language must be 'fr' or 'ar'")
+    system = (_PROMPTS / f"narrator_system_{language}.md").read_text(encoding="utf-8")
     user = (_PROMPTS / "narrator_user.md").read_text(encoding="utf-8")
     event_json = json.dumps(
         {"step": str(event.step), "data": event.data},
@@ -38,7 +36,7 @@ def _messages(event: ProcessEvent, language: str) -> list[dict[str, str]]:
     return [
         {
             "role": "system",
-            "content": system.format(language_name=_language_name(language)),
+            "content": system,
         },
         {"role": "user", "content": user.format(event_json=event_json)},
     ]

@@ -1,4 +1,5 @@
-﻿import os
+import logging
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -233,6 +234,17 @@ def contract_overrides(environ: dict[str, str] | None = None) -> dict[str, str]:
         for key, value in env.items()
         if key.upper().startswith(CONTRACT_ENV_PREFIX) and len(key) > len(CONTRACT_ENV_PREFIX)
     }
+
+
+def log_contract_overrides(logger: logging.Logger) -> None:
+    """Warn about the contracts set from the environment; called once, when the api starts.
+
+    A variable left over in a shell would otherwise switch a part to fake without anyone noticing.
+    """
+    overrides = contract_overrides()
+    if overrides:
+        listed = ", ".join(f"{name}={mode}" for name, mode in sorted(overrides.items()))
+        logger.warning("contracts overridden from the environment: %s", listed)
 
 
 class _LazyConfig:

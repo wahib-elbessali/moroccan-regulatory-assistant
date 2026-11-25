@@ -173,17 +173,24 @@ def renumber(kept: list[Claim], sources: list[Source]) -> tuple[str, list[Citati
             excerpts[source_number] = []
         if claim.excerpt not in excerpts[source_number]:
             excerpts[source_number].append(claim.excerpt)
-        output_claims.append(render_claim(claim, citation_numbers[source_number]))
+        rendered = render_claim(claim, citation_numbers[source_number])
+        if output_claims:
+            separator = "\n" if _LIST_ITEM_RE.match(claim.text) else " "
+            output_claims.append(separator + rendered)
+        else:
+            output_claims.append(rendered)
 
     citations = [
         by_number[number].citation(" … ".join(excerpts[number])) for number in citation_numbers
     ]
-    return " ".join(output_claims), citations
+    return "".join(output_claims), citations
 
 
 def checked_excerpt(excerpt: str, source_text: str, min_chars: int) -> str | None:
     """Return a verifiable excerpt copied from the source, or ``None``."""
     excerpt = unescape(excerpt)
+    excerpt = re.sub(r"\s*[\r\n]+\s*", " ", excerpt).strip()
+    source_text = re.sub(r"\s*[\r\n]+\s*", " ", source_text).strip()
     from src.ingestion.normalize import normalize_ar  # P1 owns normalization.
 
     sentences = [part for part in _CLAIM_BOUNDARY_RE.split(excerpt) if part.strip()]

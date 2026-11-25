@@ -29,10 +29,9 @@ services:
       ui: {condition: service_healthy}
 
   # ---------------------------------------------------------------- application (internal only)
-  api:  # DEV PLACEHOLDER (P6): runs the project code, so `make seed` and the leak tests can exec
-    # into it, but still only serves an empty directory on :8000. Replaced by the real api (P5).
+  api:  # the real api (P5): FastAPI, run from the project code mounted at /app/src
     # The config it reads is derived from config.yaml with `leak_index: real` (CONFIG_PATH), so
-    # `seed` registers the corpus in web-search; config.yaml itself is not changed.
+    # the leak checks and `seed` talk to web-search; config.yaml itself is not changed.
     build:
       context: .
       dockerfile: services/api-dev/Dockerfile
@@ -41,13 +40,15 @@ services:
       - sh
       - -c
       - >
-        mkdir -p /srv/empty &&
-        sed 's/^  leak_index: fake/  leak_index: real/' /app/config.yaml > /run/config.stack.yaml &&
+        sed -e 's/^  leak_index: fake/  leak_index: real/'
+        -e "s/^mode: .*/mode: $${MODE:-local}/"
+        /app/config.yaml > /run/config.stack.yaml &&
         grep -q '^  leak_index: real' /run/config.stack.yaml &&
-        exec python -m http.server 8000 --directory /srv/empty
+        exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     healthcheck:
       <<: *health
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health')"]
+      start_period: 60s  # runs the database migrations at startup
     networks: [internal]
     environment:
       MODE: ${MODE:-local}
@@ -62,6 +63,7 @@ services:
       ALLOW_CLOUD_LLM: ${ALLOW_CLOUD_LLM:-false}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - ./alembic.ini:/app/alembic.ini:ro
       - ./src:/app/src:ro
       - ./data/raw:/app/data/raw:ro
       - uploads:/app/storage/uploads

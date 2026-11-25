@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from src.api.routes import admin, ask, auth, conversations, documents, search
+from src.core.config import log_contract_overrides
 from src.core.contracts.errors import AppError
 from src.core.db.init_db import init_db
 from src.core.logging import setup_logging
@@ -31,6 +32,7 @@ def _parse_valid_uuid(raw: str | None) -> UUID | None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Run Alembic migrations, seed initial admin, and mark interrupted jobs failed (P5-10b, P5-12, P5-12b)."""
+    log_contract_overrides(logger)
     init_db()
     yield
 

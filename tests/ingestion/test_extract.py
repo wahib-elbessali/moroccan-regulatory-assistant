@@ -307,14 +307,7 @@ def test_remove_headers_footers_repeated_lines() -> None:
 def test_remove_headers_footers_number_only_middle_preserved() -> None:
     """Number-only lines in the middle of page body are preserved; bottom line removed."""
     page_text = (
-        "بداية النص القانوني\n"
-        "المادة 1\n"
-        "1\n"
-        "نص البند الأول\n"
-        "2\n"
-        "نص البند الثاني\n"
-        "خاتمة الفقرة هنا\n"
-        "12"
+        "بداية النص القانوني\nالمادة 1\n1\nنص البند الأول\n2\nنص البند الثاني\nخاتمة الفقرة هنا\n12"
     )
     pages = [Page(number=1, text=page_text)]
     cleaned = remove_headers_footers(pages)
@@ -403,6 +396,27 @@ def test_sanitize_text_strips_cc_control_characters() -> None:
     # Normal Arabic text without control characters remains completely untouched
     arabic_clean = "ظهير شريف رقم 1.23.45 صادر في 15 من شعبان 1445 (26 فبراير 2024)"
     assert sanitize_text(arabic_clean) == arabic_clean
+
+
+def test_sanitize_text_tatweel_removal_and_word_gluing() -> None:
+    """Tatweel U+0640 and adjacent single space are stripped; isolated tatweel removed."""
+    # Pattern 1 & 2: Tatweel with space between letters
+    assert sanitize_text("ت ـتكـون") == "تتكون"
+    assert sanitize_text("تكـ ـون") == "تكون"
+
+    # Clean word without tatweel is unchanged
+    clean_word = "تتكون الهيئة من سبعة أعضاء"
+    assert sanitize_text(clean_word) == clean_word
+
+    # Two words separated by isolated tatweel remain two distinct words
+    separated = sanitize_text("كلمة أولى ـ كلمة ثانية")
+    tokens = separated.split()
+    assert len(tokens) == 4
+    assert "\u0640" not in separated
+    assert tokens[0] == "كلمة"
+    assert tokens[1] == "أولى"
+    assert tokens[2] == "كلمة"
+    assert tokens[3] == "ثانية"
 
 
 def test_extract_digital_pdf_sanitizes_control_characters(tmp_path: Path) -> None:

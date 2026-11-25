@@ -70,7 +70,7 @@ def heading_word(heading: str) -> str:
 
 
 def update_path(path: list[str], word: str, heading: str) -> list[str]:
-    """Update hierarchy path by keeping only higher levels and appending heading (§6.3, T21)."""
+    """Update hierarchy path by keeping higher levels and root text title, then appending heading (§6.3, T21)."""
     norm_word = normalize_level_word(word)
     if norm_word not in LEVELS:
         return list(path) + [heading]
@@ -79,7 +79,7 @@ def update_path(path: list[str], word: str, heading: str) -> list[str]:
     kept: list[str] = []
     for p in path:
         w = normalize_level_word(heading_word(p))
-        if w in LEVELS and LEVELS.index(w) < level:
+        if w not in LEVELS or LEVELS.index(w) < level:
             kept.append(p)
     return kept + [heading]
 
@@ -90,9 +90,12 @@ def _is_cross_reference_citation(
     heading_match: re.Match[str],
 ) -> bool:
     """Detect whether a matched heading pattern is actually a citation in body text."""
-    # Check if preceding text ends with a citation preposition
-    if current_idx > 0:
-        prev_line = lines[current_idx - 1][1].strip()
+    # Check if preceding text ends with a citation preposition (skipping empty lines)
+    k = current_idx - 1
+    while k >= 0 and not lines[k][1].strip():
+        k -= 1
+    if k >= 0:
+        prev_line = lines[k][1].strip()
         if any(prev_line.endswith(prep) for prep in PREV_PREPOSITIONS):
             return True
 
@@ -103,12 +106,16 @@ def _is_cross_reference_citation(
         return True
 
     # Check if following text starts with a cross-reference postposition
-    remainder = line[heading_match.end() :].lstrip(" \t:：-–.")
+    remainder = line[heading_match.end() :].lstrip(" \t:：-–.،;؛")
     if any(remainder.startswith(post) for post in NEXT_POSTPOSITIONS):
         return True
 
-    if current_idx + 1 < len(lines):
-        next_line = lines[current_idx + 1][1].lstrip(" \t:：-–.")
+    # Check next non-empty line
+    k = current_idx + 1
+    while k < len(lines) and not lines[k][1].strip():
+        k += 1
+    if k < len(lines):
+        next_line = lines[k][1].lstrip(" \t:：-–.،;؛")
         if any(next_line.startswith(post) for post in NEXT_POSTPOSITIONS):
             return True
 
@@ -123,6 +130,12 @@ def _match_heading(
     line = lines[idx][1].strip()
     if not line:
         return None
+
+    # Normalize internal spaces in level words: e.g. 'ا لمادة' -> 'المادة', 'الماد ة' -> 'المادة'
+    line = re.sub(r"\bا\s*ل\s*م\s*ا\s*د\s*([ةه])\b", r"الماد\1", line)
+    line = re.sub(r"\bم\s*ا\s*د\s*([ةه])\b", r"ماد\1", line)
+    line = re.sub(r"\bا\s*ل\s*ف\s*ص\s*ل\b", "الفصل", line)
+    line = re.sub(r"\b[ةه]\s*د\s*ا\s*م\s*ل\s*ا\b", "المادة", line)
 
     # Format 1: Heading at start of line
     m_start = HEADING_START_RE.match(line)
@@ -162,20 +175,82 @@ def _match_heading(
     return None
 
 
+SPLIT_STEMS: dict[str, tuple[str, ...]] = {
+    "السا": ("بعة", "بع"),
+    "الثا": ("لثة", "لث", "نية", "ني"),
+    "الرا": ("بعة", "بع"),
+    "الخا": ("مسة", "مس"),
+    "التا": ("سعة", "سع"),
+    "الحا": ("دية", "دي"),
+    "العا": ("شرة", "شر"),
+}
+
+
 def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
     """Fuse isolated heading word lines with following number lines (e.g. adala_001 P57/P102)."""
+    # Normalize spaces inside level words
+    norm_lines: list[tuple[int, str]] = []
+    for p_no, line in lines:
+        l_norm = re.sub(r"\bا\s*ل\s*م\s*ا\s*د\s*([ةه])\b", r"الماد\1", line)
+        l_norm = re.sub(r"\bا\s*ل\s*ف\s*ص\s*ل\b", "الفصل", l_norm)
+        l_norm = re.sub(r"\b[ةه]\s*د\s*ا\s*م\s*ل\s*ا\b", "المادة", l_norm)
+        norm_lines.append((p_no, l_norm))
+
     fused: list[tuple[int, str]] = []
     i = 0
-    while i < len(lines):
-        p_no, line = lines[i]
+    n = len(norm_lines)
+    while i < n:
+        p_no, line = norm_lines[i]
         sline = line.strip()
-        if sline in ISOLATED_LEVEL_WORDS:
-            # Look ahead for next non-empty line
+
+        # Case 1: isolated 'ا' before level words (e.g. 'لمادة', 'لفصل', 'لباب')
+        if sline == "ا" and i + 1 < n:
             j = i + 1
-            while j < len(lines) and not lines[j][1].strip():
+            while j < n and not norm_lines[j][1].strip():
                 j += 1
-            if j < len(lines):
-                next_p, next_l = lines[j]
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith(("لمادة", "لماده", "لفصل", "لباب", "لقسم")):
+                    fused_l = "ا" + s_next
+                    norm_lines[j] = (next_p, fused_l)
+                    i = j
+                    continue
+
+        # Case 2: split ordinal suffix on next line, e.g. 'المادة السا' + 'بعة'
+        matched_split = False
+        for stem, suffixes in SPLIT_STEMS.items():
+            if sline.endswith(stem):
+                j = i + 1
+                while j < n and not norm_lines[j][1].strip():
+                    j += 1
+                if j < n:
+                    next_p, next_l = norm_lines[j]
+                    s_next = next_l.strip()
+                    for suf in suffixes:
+                        if s_next.startswith(suf):
+                            prefix = sline[: -len(stem)]
+                            joined_word = stem + suf
+                            rem = s_next[len(suf) :].lstrip(" \t:：-–.")
+                            fused_line = (prefix + joined_word).strip()
+                            if rem:
+                                fused_line += " " + rem
+                            fused.append((p_no, fused_line))
+                            i = j + 1
+                            matched_split = True
+                            break
+                    if matched_split:
+                        break
+        if matched_split:
+            continue
+
+        # Case 3: isolated level word lines (e.g. 'المادة\n1')
+        if sline in ISOLATED_LEVEL_WORDS:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
                 m = NUM_OR_ORD_RE.match(next_l.strip())
                 if m:
                     num_val = m.group(1).strip()
@@ -184,11 +259,12 @@ def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str
                     fused.append((p_no, fused_heading))
                     remainder = next_l.strip()[m.end() :].lstrip(" \t:：-–.")
                     if remainder:
-                        lines[j] = (next_p, remainder)
+                        norm_lines[j] = (next_p, remainder)
                         i = j
                     else:
                         i = j + 1
                     continue
+
         fused.append((p_no, line))
         i += 1
     return fused
@@ -217,8 +293,11 @@ def _split_long_line(page_no: int, line: str, max_chars: int) -> list[tuple[int,
     return [(page_no, p) for p in parts if p.strip()]
 
 
+TERMINAL_PUNCT: tuple[str, ...] = (".", "؛", ":", "؟", "?")
+
+
 def split_long(units: list[_ChunkUnit], max_chunk_chars: int) -> list[_ChunkUnit]:
-    """Split units longer than max_chunk_chars at paragraph boundaries (P1-22, T4)."""
+    """Split units longer than max_chunk_chars, preferring terminal punctuation boundaries for articles."""
     result: list[_ChunkUnit] = []
     for u in units:
         if len(u.text) <= max_chunk_chars:
@@ -232,32 +311,46 @@ def split_long(units: list[_ChunkUnit], max_chunk_chars: int) -> list[_ChunkUnit
             else:
                 expanded_lines.append((p_no, line_txt))
 
-        current_lines: list[tuple[int, str]] = []
-        current_len = 0
+        idx = 0
+        n = len(expanded_lines)
+        while idx < n:
+            current_lines: list[tuple[int, str]] = []
+            current_len = 0
+            last_punct_idx: int | None = None
 
-        for p_no, line_txt in expanded_lines:
-            l_len = len(line_txt)
-            needed = l_len if not current_lines else (1 + l_len)
-            if current_lines and (current_len + needed > max_chunk_chars):
+            j = idx
+            while j < n:
+                p_no, line_txt = expanded_lines[j]
+                needed = len(line_txt) if not current_lines else (1 + len(line_txt))
+                if current_lines and (current_len + needed > max_chunk_chars):
+                    break
+                current_lines.append((p_no, line_txt))
+                current_len += needed
+                if u.article is not None:
+                    s_line = line_txt.rstrip(" \t\"'»«()")
+                    if s_line and s_line.endswith(TERMINAL_PUNCT):
+                        last_punct_idx = len(current_lines) - 1
+                j += 1
+
+            if (
+                u.article is not None
+                and j < n
+                and last_punct_idx is not None
+                and last_punct_idx >= 0
+            ):
+                kept_lines = current_lines[: last_punct_idx + 1]
+                idx = idx + len(kept_lines)
+            else:
+                kept_lines = current_lines
+                idx = j
+
+            if kept_lines:
                 sub_u = _ChunkUnit(
                     article=u.article,
                     hierarchy=list(u.hierarchy),
-                    lines=list(current_lines),
+                    lines=list(kept_lines),
                 )
                 result.append(sub_u)
-                current_lines = [(p_no, line_txt)]
-                current_len = l_len
-            else:
-                current_lines.append((p_no, line_txt))
-                current_len += needed
-
-        if current_lines:
-            sub_u = _ChunkUnit(
-                article=u.article,
-                hierarchy=list(u.hierarchy),
-                lines=list(current_lines),
-            )
-            result.append(sub_u)
 
     return result
 
@@ -364,6 +457,58 @@ def _clean_trivial_units(units: list[_ChunkUnit]) -> list[_ChunkUnit]:
     return cleaned
 
 
+TEXT_END_RE: re.Pattern[str] = re.compile(
+    r"وحرر\s+(?:بالرباط|بتطوان|بفاس|بطنجة|بالفنيدق)", re.UNICODE
+)
+TEXT_START_RE: re.Pattern[str] = re.compile(
+    r"(?:^\s*(?:مرسوم|ظهير\s+شريف|قرار|مقرر|قانون)\b.*?\bرقم\b)|"
+    r"(?:(?:\b|\d)(?:مرسوم|ظهير\s+شريف|قرار|مقرر|قانون)\b.*?\bرقم\s*$)",
+    re.UNICODE,
+)
+VISA_WORDS: tuple[str, ...] = (
+    "وعلى",
+    "بناء على",
+    "الصادر بتنفيذه",
+    "المشار إليه",
+    "تطبيقا",
+    "بعد الاطلاع",
+    "بتاريخ",
+)
+
+
+def _is_text_start_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    if any(v in s for v in VISA_WORDS):
+        return False
+    if re.search(r"\.{3,}\s*[0-9٠-٩]+$", s):
+        return False
+    return bool(TEXT_START_RE.search(s))
+
+
+def _is_text_end_line(line: str) -> bool:
+    return bool(TEXT_END_RE.search(line))
+
+
+def _is_multi_text_doc(lines: list[tuple[int, str]], meta: DocumentMeta) -> bool:
+    """Detect if a document contains multiple separate legislative/regulatory texts."""
+    if meta.source_file and re.search(r"sgg_\d+", meta.source_file):
+        return True
+    if (meta.source and "الجريدة الرسمية" in meta.source) or (
+        meta.title and "الجريدة الرسمية" in meta.title
+    ):
+        return True
+    has_closing = False
+    for _, line in lines:
+        s = line.strip()
+        if _is_text_end_line(s):
+            has_closing = True
+        elif has_closing and _is_text_start_line(s):
+            return True
+    return False
+
+
 def chunk_document(
     doc_id: str,
     pages: list[Page],
@@ -406,13 +551,22 @@ def chunk_document(
     lines = _fuse_isolated_headings(raw_lines)
 
     # Determine article unit word: 'المادة' if any 'المادة' exists, otherwise 'الفصل' (P1-19)
-    has_madda = False
+    # Treat 'الفصل' as article heading when the text has no 'المادة' articles,
+    # or when 'الفصل' is the primary article unit (e.g. nationality code adala_002)
+    madda_count = 0
+    fasl_count = 0
     for i in range(len(lines)):
         hm = _match_heading(lines, i)
-        if hm and hm.word == "المادة":
-            has_madda = True
-            break
-    article_word = "المادة" if has_madda else "الفصل"
+        if hm:
+            if hm.word == "المادة":
+                madda_count += 1
+            elif hm.word == "الفصل":
+                fasl_count += 1
+
+    if fasl_count > 0 and (madda_count == 0 or fasl_count > madda_count):
+        article_word = "الفصل"
+    else:
+        article_word = "المادة"
 
     if strategy == "fixed":
         # Strategy 'fixed' (P1-23b, T23): sliding window over all content
@@ -425,7 +579,8 @@ def chunk_document(
             if hm and hm.word == article_word:
                 cur_art = hm.label
             elif hm:
-                cur_hier = update_path(cur_hier, hm.word, hm.title_extra or hm.label)
+                if not (article_word == "الفصل" and hm.word == "المادة"):
+                    cur_hier = update_path(cur_hier, hm.word, hm.title_extra or hm.label)
             annotated.append((p_no, line_txt, cur_art, list(cur_hier)))
 
         units = pack_paragraphs(annotated, max_chunk_chars, overlap_chars)
@@ -434,17 +589,41 @@ def chunk_document(
         units = []
         path: list[str] = []
         current = _ChunkUnit(article=None, hierarchy=[])
+        is_multi = _is_multi_text_doc(lines, meta)
+        in_text_closing = is_multi
 
         for i in range(len(lines)):
             p_no, line_txt = lines[i]
             hm = _match_heading(lines, i)
-            if hm and hm.word == article_word:
+
+            # In multi-text documents, ignore TOC pages before body starts
+            is_in_toc = (
+                is_multi
+                and (p_no < 4)
+                and bool(meta.source_file and re.search(r"sgg_7435", meta.source_file))
+            )
+
+            if is_multi and _is_text_end_line(line_txt):
+                in_text_closing = True
+                current.add(line_txt, p_no)
+            elif is_multi and not is_in_toc and in_text_closing and _is_text_start_line(line_txt):
+                if current.text.strip():
+                    units.append(current)
+                text_title = line_txt[:160].strip()
+                path = [text_title]
+                current = _ChunkUnit(article=None, hierarchy=list(path))
+                current.add(line_txt, p_no)
+                in_text_closing = False
+            elif hm and hm.word == article_word:
                 units.append(current)
                 current = _ChunkUnit(article=hm.label, hierarchy=list(path))
                 current.add(line_txt, p_no)
             elif hm:
-                path = update_path(path, hm.word, hm.title_extra or hm.label)
-                continue
+                if article_word == "الفصل" and hm.word == "المادة":
+                    current.add(line_txt, p_no)
+                else:
+                    path = update_path(path, hm.word, hm.title_extra or hm.label)
+                    continue
             else:
                 current.add(line_txt, p_no)
 
