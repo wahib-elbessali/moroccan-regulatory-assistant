@@ -156,12 +156,12 @@ def update_user_role(
         raise NotFound("role not found")
 
     if user.id == ctx.user_id and user.role_id != role.id:
-        raise Conflict("admin cannot change their own role")
+        raise InvalidInput("admin cannot change their own role")
 
     was_active_admin = bool(user.is_active) and str(user.role.name) == RoleName.ADMIN.value
     will_be_admin = str(role.name) == RoleName.ADMIN.value
     if was_active_admin and not will_be_admin and _count_active_admins(db) <= 1:
-        raise Conflict("cannot demote the last active admin")
+        raise InvalidInput("cannot demote the last active admin")
 
     user.role_id = role.id
     db.commit()
@@ -190,11 +190,11 @@ def update_user_active(
 
     active_value = bool(body["is_active"])
     if user.id == ctx.user_id and not active_value:
-        raise Conflict("admin cannot deactivate their own account")
+        raise InvalidInput("admin cannot deactivate their own account")
 
     was_active_admin = bool(user.is_active) and str(user.role.name) == RoleName.ADMIN.value
     if was_active_admin and not active_value and _count_active_admins(db) <= 1:
-        raise Conflict("cannot deactivate the last active admin")
+        raise InvalidInput("cannot deactivate the last active admin")
 
     user.is_active = active_value  # type: ignore[assignment]
     db.commit()

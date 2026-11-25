@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+﻿from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -53,17 +53,14 @@ def _to_response(conv: Conversation) -> ConversationResponse:
 
 def _extract_cited_doc_ids(answer_obj: dict[str, Any]) -> list[str]:
     doc_ids: list[str] = []
-    for key in ("citations", "sources", "cited_documents", "documents"):
-        items = answer_obj.get(key)
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if isinstance(item, str) and item.strip():
-                doc_ids.append(item.strip())
-            elif isinstance(item, dict):
-                val = item.get("doc_id") or item.get("document_id") or item.get("id")
-                if val:
-                    doc_ids.append(str(val).strip())
+    citations = answer_obj.get("citations")
+    if not isinstance(citations, list):
+        return doc_ids
+    for item in citations:
+        if isinstance(item, dict):
+            doc_id = item.get("doc_id")
+            if isinstance(doc_id, str) and doc_id.strip():
+                doc_ids.append(doc_id.strip())
     return doc_ids
 
 
@@ -76,7 +73,7 @@ def _is_answer_available(
 ) -> bool:
     cited_ids = _extract_cited_doc_ids(answer_obj)
     for doc_id in cited_ids:
-        if doc_id not in visible_ids:
+        if ctx.role != RoleName.ADMIN.value and doc_id not in visible_ids:
             return False
         doc = docs_by_id.get(doc_id)
         if doc is None:
@@ -84,8 +81,6 @@ def _is_answer_available(
             if doc is None:
                 return False
         if str(doc.status) != DocStatus.READY.value:
-            return False
-        if ctx.role != RoleName.ADMIN.value and doc_id not in visible_ids:
             return False
     return True
 
