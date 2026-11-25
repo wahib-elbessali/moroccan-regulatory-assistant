@@ -356,16 +356,20 @@ def test_split_claims_inherits_list_introducer_citation_and_skips_introducer() -
         "Les conditions sont les suivantes [1]:\n"
         "- Première condition\n"
         "2. Deuxième condition\n"
-        "- Troisième condition [2].",
+        "12 - Troisième condition\n"
+        "٣ ) Quatrième condition\n"
+        "- Cinquième condition [2].",
         {1, 2},
     )
 
     assert [claim.text for claim in claims] == [
         "- Première condition",
         "2. Deuxième condition",
-        "- Troisième condition [2].",
+        "12 - Troisième condition",
+        "٣ ) Quatrième condition",
+        "- Cinquième condition [2].",
     ]
-    assert [claim.cited for claim in claims] == [[1], [1], [2]]
+    assert [claim.cited for claim in claims] == [[1], [1], [1], [1], [2]]
 
 
 def test_judge_system_prompt_has_single_braces_without_formatting() -> None:

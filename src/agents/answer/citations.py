@@ -10,7 +10,8 @@ from src.core.contracts.models import Citation, Passage, WebResult
 
 _MARKER_RE = re.compile(r"\[(\d+)\]")
 _CLAIM_BOUNDARY_RE = re.compile(r"(?<!^[0-9٠-٩]\.)(?<=[.!؟?])(?=\s|$)|\r?\n+", re.MULTILINE)
-_LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|\d+[.)]|[٠-٩]+[.)])\s+")
+_LIST_NUMBER_PERIOD_RE = re.compile(r"^(\s*[0-9٠-٩]{1,3}\s*)\.(?=\s)")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|[0-9٠-٩]{1,3}\s*[-–—.)])\s+")
 _ENDING_PUNCTUATION_RE = re.compile(r"([.!؟?])([\"'’”»)]*)$")
 
 
@@ -115,7 +116,15 @@ def split_claims(text: str, valid_sources: set[int]) -> list[Claim]:
     """Split on sentence endings or line breaks and keep valid citation markers."""
     claims: list[Claim] = []
     list_sources: list[int] = []
-    for fragment in _CLAIM_BOUNDARY_RE.split(text):
+    fragments: list[str] = []
+    for line in re.split(r"\r?\n+", text):
+        protected_line = _LIST_NUMBER_PERIOD_RE.sub(
+            lambda match: match.group(1) + "\x00", line, count=1
+        )
+        fragments.extend(_CLAIM_BOUNDARY_RE.split(protected_line))
+
+    for fragment in fragments:
+        fragment = fragment.replace("\x00", ".")
         fragment = fragment.strip()
         if not fragment:
             continue
