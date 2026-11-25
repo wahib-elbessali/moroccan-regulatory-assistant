@@ -571,6 +571,10 @@ def test_fasl_headings_treated_as_articles_when_no_madda_body() -> None:
         "تسري المقتضيات الجديدة على الحالات المستقبلية.\n"
         "الفصل 3\n"
         "تثبت الجنسية المغربية الأصلية بحكم القانون.\n"
+        "لا فصل الرابع: سن الرشد\n"
+        "يحدد سن الرشد القانوني بثماني عشرة سنة.\n"
+        "الفصل الثاني عشر13: استثناءات التجنيس\n"
+        "يجوز تجنيس الأجنبي الذي قدم خدمات استثنائية للمغرب.\n"
         "الباب الثاني: الجنسية الأصلية\n"
         "الفصل السادس: النسب\n"
         "يعتبر مغربيا الولد المولود من أب مغربي أو أم مغربية.\n"
@@ -583,12 +587,58 @@ def test_fasl_headings_treated_as_articles_when_no_madda_body() -> None:
     assert chunks[0].article is None  # Preamble
     assert "الفصل الأول" in articles
     assert "الفصل الثاني" in articles
+    assert articles.count("الفصل الثاني") == 1  # exactly once (not duplicated by article 12)
     assert "الفصل 3" in articles
+    assert "الفصل الرابع" in articles  # normalized from 'لا فصل الرابع'
+    assert "الفصل الثاني عشر" in articles  # footnote 13 stripped from heading
     assert "الفصل السادس" in articles
 
     # Verify hierarchy is preserved
     fasl6_chunk = next(c for c in chunks if c.article == "الفصل السادس")
     assert any("الباب الثاني" in h for h in fasl6_chunk.hierarchy)
+
+
+def test_compound_ordinals_with_footnote_and_citations() -> None:
+    """Test compound ordinals with glued footnotes, flipped 'لا فصل', and cross-reference citations."""
+    sample = (
+        "قانون الجنسية والأحكام القضائية\n"
+        "الفصل الثاني: المبادئ العامة للتطبيق\n"
+        "تسري القواعد العامة على كافة المنازعات.\n"
+        "لا فصل الرابع: الأهلية القانونية\n"
+        "تحدد الأهلية وفق أحكام هذا الفصل.\n"
+        "الفصل الثاني عشر13: شروط التجنيس الاستثنائية\n"
+        "تمنح الجنسية للأجنبي صاحب الخدمات المتميزة.\n"
+        "الفصل الثامن عشر14: الآثار الجماعية لفقدان الجنسية\n"
+        "تسري الآثار المنصوص عليها في المقطعات السابقة.\n"
+        "من\n"
+        "الفصل19\n"
+        "يمتد أثره بحكم القانون إلى الأولاد القاصرين.\n"
+        "الفصل التاسع عشر15: حالات الفقدان\n"
+        "يفقد الجنسية المغربية كل من تجنس بجنسية أجنبية.\n"
+        "الفصل السادس والثلاثون20: اختصاص المحاكم\n"
+        "تختص المحاكم الابتدائية بالنظر في دعاوى الجنسية طبقا للحالة المنصوص عليها في\n"
+        "الفصل36\n"
+        "وما يليه إلى الفصل40 الآتي فيما بعد."
+    )
+    pages = [Page(number=1, text=sample)]
+    chunks = chunk_document("test_compound_citations", pages)
+
+    articles = [c.article for c in chunks if c.article]
+    # Check that compound ordinals are not truncated
+    assert "الفصل الثاني عشر" in articles
+    assert "الفصل الثامن عشر" in articles
+    assert "الفصل التاسع عشر" in articles
+    assert "الفصل السادس والثلاثون" in articles
+    assert "الفصل الرابع" in articles
+    assert "الفصل الثاني" in articles
+    assert articles.count("الفصل الثاني") == 1
+
+    # Check that mid-sentence reference 'الفصل 19' and 'الفصل 36 وما يليه' are citations, NOT chunks
+    assert "الفصل 19" not in articles
+    assert "الفصل 36" not in articles
+    assert not any(a == "الفصل الثامن" for a in articles)
+    assert not any(a == "الفصل التاسع" for a in articles)
+    assert not any(a == "الفصل السادس" for a in articles)
 
 
 def test_adala_006_regression_all_seven_articles() -> None:
@@ -624,8 +674,31 @@ def test_adala_002_regression_nationality_code_fasl() -> None:
     chunks = chunk_document("adala_002", pages)
 
     fasl_articles = [c.article for c in chunks if c.article and c.article.startswith("الفصل")]
-    # Nationality code has 45 chapters; chunker should yield >= 35 chapter chunks
-    assert len(fasl_articles) >= 35
-    # Should not have dozens of chunks labeled 'المادة الأولى'
+    # Nationality code has 46 chapters; chunker should yield all 46 chapter chunks
+    assert len(fasl_articles) == 46
+    # Verify specific article labels requested by professor
+    assert "الفصل الثاني عشر" in fasl_articles
+    assert "الفصل الرابع" in fasl_articles
+    assert fasl_articles.count("الفصل الثاني") <= 1
+    # Verify compound ordinals with glued footnotes are not cut short
+    assert "الفصل الحادي عشر" in fasl_articles
+    assert "الفصل الثامن عشر" in fasl_articles
+    assert "الفصل التاسع عشر" in fasl_articles
+    assert "الفصل العشرون" in fasl_articles
+    assert "الفصل الثاني والعشرون" in fasl_articles
+    assert "الفصل السابع والعشرون" in fasl_articles
+    assert "الفصل الثلاثون" in fasl_articles
+    assert "الفصل السادس والثلاثون" in fasl_articles
+    assert "الفصل الثامن والثلاثون" in fasl_articles
+    assert "الفصل التاسع والثلاثون" in fasl_articles
+    assert "الفصل الأربعون" in fasl_articles
+    assert "الفصل الواحد والأربعون" in fasl_articles
+    assert "الفصل الثاني والأربعون" in fasl_articles
+    # Verify false citations are not treated as article chunks
+    assert "الفصل 19" not in fasl_articles
+    assert "الفصل 36" not in fasl_articles
+    # Should not have chunks labeled 'المادة'
     madda_articles = [c.article for c in chunks if c.article and c.article.startswith("المادة")]
     assert len(madda_articles) == 0
+    # Total chunks = 1 preamble + 46 articles = 47
+    assert len(chunks) == 47
