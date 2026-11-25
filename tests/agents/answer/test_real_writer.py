@@ -397,6 +397,15 @@ def test_excerpt_validator_rejects_more_than_one_sentence() -> None:
     )
 
 
+def test_excerpt_validator_unescapes_html_entities_from_judge() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = 'L\'Union & "quotes" <details>'
+    judge_excerpt = "L&#x27;Union &amp; &quot;quotes&quot; &lt;details&gt;"
+
+    assert checked_excerpt(judge_excerpt, source, min_chars=10) == source
+
+
 def test_t10_invalid_judge_json_uses_word_check_fallback(
     sample_chunks, lecteur_ctx, install_llm, caplog
 ) -> None:

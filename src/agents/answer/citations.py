@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from html import escape
+from html import escape, unescape
 
 from src.core.contracts.models import Citation, Passage, WebResult
 
@@ -183,6 +183,7 @@ def renumber(kept: list[Claim], sources: list[Source]) -> tuple[str, list[Citati
 
 def checked_excerpt(excerpt: str, source_text: str, min_chars: int) -> str | None:
     """Return a verifiable excerpt copied from the source, or ``None``."""
+    excerpt = unescape(excerpt)
     from src.ingestion.normalize import normalize_ar  # P1 owns normalization.
 
     sentences = [part for part in _CLAIM_BOUNDARY_RE.split(excerpt) if part.strip()]
