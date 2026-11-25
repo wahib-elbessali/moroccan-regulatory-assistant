@@ -70,7 +70,7 @@ def heading_word(heading: str) -> str:
 
 
 def update_path(path: list[str], word: str, heading: str) -> list[str]:
-    """Update hierarchy path by keeping only higher levels and appending heading (§6.3, T21)."""
+    """Update hierarchy path by keeping higher levels and root text title, then appending heading (§6.3, T21)."""
     norm_word = normalize_level_word(word)
     if norm_word not in LEVELS:
         return list(path) + [heading]
@@ -79,7 +79,7 @@ def update_path(path: list[str], word: str, heading: str) -> list[str]:
     kept: list[str] = []
     for p in path:
         w = normalize_level_word(heading_word(p))
-        if w in LEVELS and LEVELS.index(w) < level:
+        if w not in LEVELS or LEVELS.index(w) < level:
             kept.append(p)
     return kept + [heading]
 
@@ -103,12 +103,12 @@ def _is_cross_reference_citation(
         return True
 
     # Check if following text starts with a cross-reference postposition
-    remainder = line[heading_match.end() :].lstrip(" \t:：-–.")
+    remainder = line[heading_match.end() :].lstrip(" \t:：-–.،")
     if any(remainder.startswith(post) for post in NEXT_POSTPOSITIONS):
         return True
 
     if current_idx + 1 < len(lines):
-        next_line = lines[current_idx + 1][1].lstrip(" \t:：-–.")
+        next_line = lines[current_idx + 1][1].lstrip(" \t:：-–.،")
         if any(next_line.startswith(post) for post in NEXT_POSTPOSITIONS):
             return True
 
@@ -217,8 +217,11 @@ def _split_long_line(page_no: int, line: str, max_chars: int) -> list[tuple[int,
     return [(page_no, p) for p in parts if p.strip()]
 
 
+TERMINAL_PUNCT: tuple[str, ...] = (".", "؛", ":", "؟", "?")
+
+
 def split_long(units: list[_ChunkUnit], max_chunk_chars: int) -> list[_ChunkUnit]:
-    """Split units longer than max_chunk_chars at paragraph boundaries (P1-22, T4)."""
+    """Split units longer than max_chunk_chars, preferring terminal punctuation boundaries for articles."""
     result: list[_ChunkUnit] = []
     for u in units:
         if len(u.text) <= max_chunk_chars:
@@ -232,32 +235,46 @@ def split_long(units: list[_ChunkUnit], max_chunk_chars: int) -> list[_ChunkUnit
             else:
                 expanded_lines.append((p_no, line_txt))
 
-        current_lines: list[tuple[int, str]] = []
-        current_len = 0
+        idx = 0
+        n = len(expanded_lines)
+        while idx < n:
+            current_lines: list[tuple[int, str]] = []
+            current_len = 0
+            last_punct_idx: int | None = None
 
-        for p_no, line_txt in expanded_lines:
-            l_len = len(line_txt)
-            needed = l_len if not current_lines else (1 + l_len)
-            if current_lines and (current_len + needed > max_chunk_chars):
+            j = idx
+            while j < n:
+                p_no, line_txt = expanded_lines[j]
+                needed = len(line_txt) if not current_lines else (1 + len(line_txt))
+                if current_lines and (current_len + needed > max_chunk_chars):
+                    break
+                current_lines.append((p_no, line_txt))
+                current_len += needed
+                if u.article is not None:
+                    s_line = line_txt.rstrip(" \t\"'»«()")
+                    if s_line and s_line.endswith(TERMINAL_PUNCT):
+                        last_punct_idx = len(current_lines) - 1
+                j += 1
+
+            if (
+                u.article is not None
+                and j < n
+                and last_punct_idx is not None
+                and last_punct_idx >= 0
+            ):
+                kept_lines = current_lines[: last_punct_idx + 1]
+                idx = idx + len(kept_lines)
+            else:
+                kept_lines = current_lines
+                idx = j
+
+            if kept_lines:
                 sub_u = _ChunkUnit(
                     article=u.article,
                     hierarchy=list(u.hierarchy),
-                    lines=list(current_lines),
+                    lines=list(kept_lines),
                 )
                 result.append(sub_u)
-                current_lines = [(p_no, line_txt)]
-                current_len = l_len
-            else:
-                current_lines.append((p_no, line_txt))
-                current_len += needed
-
-        if current_lines:
-            sub_u = _ChunkUnit(
-                article=u.article,
-                hierarchy=list(u.hierarchy),
-                lines=list(current_lines),
-            )
-            result.append(sub_u)
 
     return result
 
@@ -364,6 +381,58 @@ def _clean_trivial_units(units: list[_ChunkUnit]) -> list[_ChunkUnit]:
     return cleaned
 
 
+TEXT_END_RE: re.Pattern[str] = re.compile(
+    r"وحرر\s+(?:بالرباط|بتطوان|بفاس|بطنجة|بالفنيدق)", re.UNICODE
+)
+TEXT_START_RE: re.Pattern[str] = re.compile(
+    r"(?:^\s*(?:مرسوم|ظهير\s+شريف|قرار|مقرر|قانون)\b.*?\bرقم\b)|"
+    r"(?:(?:\b|\d)(?:مرسوم|ظهير\s+شريف|قرار|مقرر|قانون)\b.*?\bرقم\s*$)",
+    re.UNICODE,
+)
+VISA_WORDS: tuple[str, ...] = (
+    "وعلى",
+    "بناء على",
+    "الصادر بتنفيذه",
+    "المشار إليه",
+    "تطبيقا",
+    "بعد الاطلاع",
+    "بتاريخ",
+)
+
+
+def _is_text_start_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    if any(v in s for v in VISA_WORDS):
+        return False
+    if re.search(r"\.{3,}\s*[0-9٠-٩]+$", s):
+        return False
+    return bool(TEXT_START_RE.search(s))
+
+
+def _is_text_end_line(line: str) -> bool:
+    return bool(TEXT_END_RE.search(line))
+
+
+def _is_multi_text_doc(lines: list[tuple[int, str]], meta: DocumentMeta) -> bool:
+    """Detect if a document contains multiple separate legislative/regulatory texts."""
+    if meta.source_file and re.search(r"sgg_\d+", meta.source_file):
+        return True
+    if (meta.source and "الجريدة الرسمية" in meta.source) or (
+        meta.title and "الجريدة الرسمية" in meta.title
+    ):
+        return True
+    has_closing = False
+    for _, line in lines:
+        s = line.strip()
+        if _is_text_end_line(s):
+            has_closing = True
+        elif has_closing and _is_text_start_line(s):
+            return True
+    return False
+
+
 def chunk_document(
     doc_id: str,
     pages: list[Page],
@@ -434,11 +503,32 @@ def chunk_document(
         units = []
         path: list[str] = []
         current = _ChunkUnit(article=None, hierarchy=[])
+        is_multi = _is_multi_text_doc(lines, meta)
+        in_text_closing = is_multi
 
         for i in range(len(lines)):
             p_no, line_txt = lines[i]
             hm = _match_heading(lines, i)
-            if hm and hm.word == article_word:
+
+            # In multi-text documents, ignore TOC pages before body starts
+            is_in_toc = (
+                is_multi
+                and (p_no < 4)
+                and bool(meta.source_file and re.search(r"sgg_7435", meta.source_file))
+            )
+
+            if is_multi and _is_text_end_line(line_txt):
+                in_text_closing = True
+                current.add(line_txt, p_no)
+            elif is_multi and not is_in_toc and in_text_closing and _is_text_start_line(line_txt):
+                if current.text.strip():
+                    units.append(current)
+                text_title = line_txt[:160].strip()
+                path = [text_title]
+                current = _ChunkUnit(article=None, hierarchy=list(path))
+                current.add(line_txt, p_no)
+                in_text_closing = False
+            elif hm and hm.word == article_word:
                 units.append(current)
                 current = _ChunkUnit(article=hm.label, hierarchy=list(path))
                 current.add(line_txt, p_no)

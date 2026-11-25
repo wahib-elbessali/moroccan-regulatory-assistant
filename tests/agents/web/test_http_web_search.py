@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 import pytest
 
 from src.agents.web import HttpWebSearch

@@ -1,9 +1,9 @@
 """Tests of src/retrieval/search.py (P2 spec §8: T12, T15, T16, T20, T21, and the P2-14 re-check).
 
-The pipeline runs against the merged Qdrant store on an in-memory Qdrant (as ``P2-C-fatima.md``
-prescribes) with the deterministic ``HashModels`` of ``p2_helpers``, and usually a small BM25
-double so the keyword list can be set exactly. T15 is the exception: it wires Basma's real
-``BM25Index`` to Wahib's real ``QdrantStore``, because staleness is a property of the real pair.
+The pipeline runs against the merged Qdrant store on an in-memory Qdrant with the deterministic
+``HashModels`` of ``p2_helpers``, and usually a small BM25 double so the keyword list can be set
+exactly. T15 is the exception: it wires Basma's real ``BM25Index`` to Wahib's real ``QdrantStore``,
+because staleness is a property of the real pair.
 
 ``StubStore`` and ``RecordingModels`` exist for the steps whose ordering must be observed exactly
 (the re-check keeps no order, so the restored BM25 ranking cannot be asserted through a real
@@ -625,10 +625,11 @@ def test_bm25_receives_the_normalised_tokenised_query(store: QdrantStore) -> Non
     Retrieval(store, bm25, models=HashModels()).search(typed, ctx)
     tokens, role, limit = bm25.calls[0]
 
-    # normalize_ar turns teh marbuta into heh (المادة -> الماده) and tokenize drops the stopword
-    # من, so the tokens are neither the typed words nor a copy of them.
+    # normalize_ar turns teh marbuta into heh (المادة -> الماده), tokenize drops the stopword
+    # من and light_stem removes the article (الماده -> ماده, القانون -> قان), so the tokens are
+    # neither the typed words nor a copy of them.
     assert tokens == tokenize(normalize_ar(typed))
-    assert tokens == ["الماده", "12", "القانون"]
+    assert tokens == ["ماده", "12", "قان"]
     assert "من" not in tokens
     assert (role, limit) == ("lecteur", 30)
 
@@ -736,7 +737,7 @@ def test_rights_methods_work_through_the_real_store(
 
 
 def test_models_client_falls_back_to_the_one_the_store_carries(store: QdrantStore) -> None:
-    """``Retrieval(store, bm25)`` — the wiring agreed in P2-common.md — stays valid."""
+    """``Retrieval(store, bm25)``, without a models client, stays valid."""
     retrieval = Retrieval(store, StubBm25())
     assert retrieval.models is store.models
 
@@ -992,7 +993,7 @@ def test_t15_stale_bm25_still_cannot_return_a_hidden_chunk(
 
 # --- P2-29 and T22: the one structured line per search ----------------------------------------
 
-# Every field the line must carry (``P2-C-fatima.md``, spec §3.7). Written out here rather than
+# Every field the line must carry (spec §3.7). Written out here rather than
 # derived from the implementation, so dropping or renaming one fails this file.
 LOG_FIELDS = {
     "event",

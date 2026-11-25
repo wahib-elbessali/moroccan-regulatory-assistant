@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import app as web_app
 import httpx
@@ -478,3 +478,36 @@ def test_index_refuses_anything_but_hex_fingerprints(api, field, bad_value):
     store = web_app.app.state.store
     assert store.get(bad_value) == []
     assert store.get(VALID_FINGERPRINT) == []
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer wrong-token"}],
+    ids=["no-token", "wrong-token"],
+)
+def test_t18_unauthorized_writes_leave_the_store_unchanged(api, headers):
+    """T18: without the token, or with a wrong one, every write is refused and changes nothing."""
+    client, _, _ = api
+    kept, intruder = "0123456789abcdef", "fedcba9876543210"
+    registered = client.post(
+        "/index", json={"doc_id": "document-3", "grams": [kept], "refs": []}, headers=auth()
+    )
+    assert registered.status_code == 204
+    before = web_app.app.state.store.get(kept)
+
+    assert (
+        client.post(
+            "/index", json={"doc_id": "intruder", "grams": [intruder], "refs": []}, headers=headers
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/blocking", json={"doc_id": "document-3", "blocking": False}, headers=headers
+        ).status_code
+        == 401
+    )
+    assert client.delete("/index/document-3", headers=headers).status_code == 401
+
+    assert web_app.app.state.store.get(kept) == before == [("document-3", True, "gram")]
+    assert web_app.app.state.store.get(intruder) == []
