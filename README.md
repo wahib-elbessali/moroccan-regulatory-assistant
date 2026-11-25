@@ -40,7 +40,7 @@ You need Docker with Compose. The commands below are `make` targets; on Windows 
 |---|---|---|
 | `make models` | Downloads every model once (language models, embeddings, re-ranker, tokenizer files, OCR) into Docker volumes. Needs internet; after it has run, the stack starts with the internet off. | `python services/download_models.py` |
 | `make up` | Starts the whole stack in `local` mode and waits until every service is healthy. | `docker compose up -d --wait` |
-| `make up-light` | Same, in `light` mode: a smaller language model, for modest machines. | `set MODE=light`, then `docker compose up -d --wait`, then `set MODE=` |
+| `make up-light` | Same, in `light` mode: a smaller language model, for modest machines. | cmd: `set MODE=light`, then `docker compose up -d --wait`, then `set MODE=`. PowerShell: `$env:MODE="light"; docker compose up -d --wait; $env:MODE=""` |
 | `make down` | Stops and removes the containers. The volumes (databases, models, uploads) are kept. | `docker compose down` |
 | `make test-isolation` | Checks that only `web-search` and `searxng` can reach the internet (tests T1 to T3). The stack must be up. | `pytest tests/sovereignty/test_network_isolation.py -v` |
 | `make seed` | Loads the corpus of `data/raw` through the ingestion command line, inside `api`, then marks the public documents as non-blocking for the web leak filter. The stack must be up. `make seed OWNER=<uuid>` sets the owner of the uploaded rows. | `docker compose exec api python -m src.ingestion.cli seed --owner <uuid> --raw-dir /app/data/raw`, then `docker compose exec -T api python - < scripts\leak_unblock_public.py` |
