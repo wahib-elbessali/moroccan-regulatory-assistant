@@ -1,4 +1,4 @@
-.PHONY: models up up-light down test-isolation seed
+.PHONY: models up up-light up-gpu down test-isolation seed
 
 # Owner of the `upload` rows of data/raw/manifest.csv. document_rights is fake for now, so this
 # development UUID is not checked against a user. Override: `make seed OWNER=<uuid>`.
@@ -12,6 +12,10 @@ up:
 
 up-light:
 	MODE=light docker compose up -d --wait
+
+# Same as `up`, with the NVIDIA card given to Ollama (needs the drivers, see docker-compose.gpu.yml).
+up-gpu:
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 
 down:
 	docker compose down
