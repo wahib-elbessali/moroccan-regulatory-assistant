@@ -13,6 +13,10 @@ from src.agents.orchestrator.prompts import (
     plan_messages,
     reformulate_messages,
 )
+from src.agents.orchestrator.reformulation_guard import (
+    complete_sub_questions,
+    keeps_meaning,
+)
 from src.agents.orchestrator.validation import coerce_bool, parse_json_or_none
 from src.core.config import cfg
 from src.core.contracts.models import Answer, Passage, ProcessEvent, UserContext
@@ -142,6 +146,10 @@ def plan_node(state: GraphState) -> dict:
         subs = [state["question"]]
 
     sub_questions = subs[: cfg.agents.max_sub_questions]
+    # A part of the question the planner dropped is added back (organizer feedback).
+    sub_questions = complete_sub_questions(
+        state["question"], sub_questions, cfg.agents.max_sub_questions
+    )
     needs_web = coerce_bool(data.get("needs_web"), default=False) if data else False
 
     state["emit"](ProcessEvent(step="plan", data={"sub_questions": sub_questions}))
@@ -322,6 +330,12 @@ def reformulate_node(state: GraphState) -> dict:
 
     total_tokens = state["tokens"] + tokens
     normalized_new = normalize_ar(new_q)
+    # A reformulation that drops a legal term or a part of the question is rejected like a
+    # duplicate: the loop for this sub-question ends (organizer feedback, P3 prompt fix).
+    if new_q and not keeps_meaning(sub_q, new_q):
+        logger.info("orchestrator.reformulate_rejected", extra={"node": "reformulate"})
+        new_q = ""
+        normalized_new = ""
     if not normalized_new or new_q in state["tried"]:
         logger.info(
             "orchestrator.reformulate",
