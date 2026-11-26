@@ -95,29 +95,51 @@ def _is_cross_reference_citation(
     while k >= 0 and not lines[k][1].strip():
         k -= 1
     if k >= 0:
-        prev_line = lines[k][1].strip()
-        if any(prev_line.endswith(prep) for prep in PREV_PREPOSITIONS):
+        prev_line = lines[k][1].strip().rstrip(".,:؛!؟-–")
+        words = prev_line.split()
+        last_word = words[-1] if words else ""
+        last_two_collapsed = "".join(words[-2:]) if len(words) >= 2 else ""
+        if any(
+            last_word == prep
+            or last_two_collapsed == prep
+            or (len(prep) > 3 and prev_line.endswith(prep))
+            for prep in PREV_PREPOSITIONS
+        ):
             return True
 
     # Check if the line itself has citation prepositions before the match
     line = lines[current_idx][1]
-    prefix = line[: heading_match.start()].strip()
-    if prefix and any(prefix.endswith(prep) for prep in PREV_PREPOSITIONS):
-        return True
+    prefix = line[: heading_match.start()].strip().rstrip(".,:؛!؟-–")
+    if prefix:
+        words_prefix = prefix.split()
+        last_word_prefix = words_prefix[-1] if words_prefix else ""
+        last_two_prefix = "".join(words_prefix[-2:]) if len(words_prefix) >= 2 else ""
+        if any(
+            last_word_prefix == prep
+            or last_two_prefix == prep
+            or (len(prep) > 3 and prefix.endswith(prep))
+            for prep in PREV_PREPOSITIONS
+        ):
+            return True
 
     # Check if following text starts with a cross-reference postposition
     remainder = line[heading_match.end() :].lstrip(" \t:：-–.،;؛")
     if any(remainder.startswith(post) for post in NEXT_POSTPOSITIONS):
         return True
 
-    # Check next non-empty line
+    # Check next non-empty line (isolated wrapped postposition)
     k = current_idx + 1
     while k < len(lines) and not lines[k][1].strip():
         k += 1
     if k < len(lines):
         next_line = lines[k][1].lstrip(" \t:：-–.،;؛")
-        if any(next_line.startswith(post) for post in NEXT_POSTPOSITIONS):
-            return True
+        for post in NEXT_POSTPOSITIONS:
+            if next_line.startswith(post):
+                # Multi-word postposition ("من هذا القانون", "وما يليه", etc.) is always a citation.
+                # Single-word adverbs ("أعلاه", "بعده", etc.) only match if isolated to prevent
+                # false positives on bidi-wrapped paragraph lines in multi-column layouts.
+                if len(post.split()) > 1 or len(next_line.split()) <= 3:
+                    return True
 
     return False
 
@@ -131,11 +153,24 @@ def _match_heading(
     if not line:
         return None
 
-    # Normalize internal spaces in level words: e.g. 'ا لمادة' -> 'المادة', 'الماد ة' -> 'المادة'
+    # Strip leading colons or dashes on headings (e.g. ':الباب الرابع')
+    line = line.lstrip(" \t:：-–")
+
+    # Normalize internal spaces / OCR artifacts in level words
+    line = re.sub(r"(?:\b|^)(?:لا\s*فصل|ال\s+فصل|لا\s*فص\s*ل)(?=[0-9٠-٩])", "الفصل ", line)
+    line = re.sub(r"(?:\b|^)(?:لا\s*فصل|ال\s+فصل|لا\s*فص\s*ل)\b", "الفصل", line)
+    line = re.sub(r"(?:\b|^)(?:لا\s*مادة|ال\s+مادة|لا\s*ماد\s*[ةه])(?=[0-9٠-٩])", "المادة ", line)
+    line = re.sub(r"(?:\b|^)(?:لا\s*مادة|ال\s+مادة|لا\s*ماد\s*[ةه])\b", "المادة", line)
     line = re.sub(r"\bا\s*ل\s*م\s*ا\s*د\s*([ةه])\b", r"الماد\1", line)
     line = re.sub(r"\bم\s*ا\s*د\s*([ةه])\b", r"ماد\1", line)
     line = re.sub(r"\bا\s*ل\s*ف\s*ص\s*ل\b", "الفصل", line)
     line = re.sub(r"\b[ةه]\s*د\s*ا\s*م\s*ل\s*ا\b", "المادة", line)
+    line = re.sub(
+        r"\b(الحادي|الحادية|الثاني|الثانية|الثالث|الثالثة|الرابع|الرابعة|الخامس|الخامسة|السادس|السادسة|السابع|السابعة|الثامن|الثامنة|التاسع|التاسعة)\s*:\s*(عشر|عشرة)\b",
+        r"\1 \2",
+        line,
+    )
+    line = re.sub(r"\bالفصل\s+وا\s+ال\b", "الفصل الوا", line)
 
     # Format 1: Heading at start of line
     m_start = HEADING_START_RE.match(line)
@@ -148,6 +183,25 @@ def _match_heading(
         canonical = canonical_heading_label(m_start.group(1), num_ord, suffix)
 
         remainder = line[m_start.end() :].strip().lstrip(" \t:：-–.")
+        # Check if the heading is followed by quotation marks indicating a quoted citation from another text
+        if remainder.startswith(('"', "«", "”", "“")):
+            return None
+        if not remainder:
+            # Check up to 2 non-empty lines ahead for standalone opening quote line (e.g. adala_013 footnote citations)
+            k_quote = idx + 1
+            while k_quote < len(lines) and not lines[k_quote][1].strip():
+                k_quote += 1
+            count_checked = 0
+            while k_quote < len(lines) and count_checked < 2:
+                q_candidate = lines[k_quote][1].strip().lstrip(" \t:：-–.")
+                if q_candidate in ('"', "«", "”", "“"):
+                    return None
+                if q_candidate:
+                    break
+                k_quote += 1
+                while k_quote < len(lines) and not lines[k_quote][1].strip():
+                    k_quote += 1
+                count_checked += 1
         hier_label = f"{canonical}: {remainder}" if remainder else canonical
         is_art = word == "المادة"
         return _HeadingMatch(
@@ -183,18 +237,73 @@ SPLIT_STEMS: dict[str, tuple[str, ...]] = {
     "التا": ("سعة", "سع"),
     "الحا": ("دية", "دي"),
     "العا": ("شرة", "شر"),
+    "الثلا": ("ثون", "ثين"),
+    "والث": ("لاثون", "لاثين"),
+    "والعش": ("رون", "رين"),
+    "العش": ("رون", "رين"),
 }
+
+UNIT_ORDINALS: frozenset[str] = frozenset(
+    {
+        "الأول",
+        "الأولى",
+        "الاول",
+        "الاولى",
+        "الثاني",
+        "الثانية",
+        "الثالث",
+        "الثالثة",
+        "الرابع",
+        "الرابعة",
+        "الخامس",
+        "الخامسة",
+        "السادس",
+        "السادسة",
+        "السابع",
+        "السابعة",
+        "الثامن",
+        "الثامنة",
+        "التاسع",
+        "التاسعة",
+        "الواحد",
+        "الواحدة",
+        "الحادي",
+        "الحادية",
+    }
+)
 
 
 def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str]]:
     """Fuse isolated heading word lines with following number lines (e.g. adala_001 P57/P102)."""
-    # Normalize spaces inside level words
     norm_lines: list[tuple[int, str]] = []
     for p_no, line in lines:
-        l_norm = re.sub(r"\bا\s*ل\s*م\s*ا\s*د\s*([ةه])\b", r"الماد\1", line)
-        l_norm = re.sub(r"\bا\s*ل\s*ف\s*ص\s*ل\b", "الفصل", l_norm)
-        l_norm = re.sub(r"\b[ةه]\s*د\s*ا\s*م\s*ل\s*ا\b", "المادة", l_norm)
-        norm_lines.append((p_no, l_norm))
+        cur_line = line
+        cur_line = re.sub(
+            r"^\s*[:：\-–]+\s*(الكتاب|كتاب|الباب|باب|القسم|قسم|الفرع|فرع|الفصل|فصل)",
+            r"\1",
+            cur_line,
+        )
+        cur_line = re.sub(
+            r"(?:\b|^)(?:لا\s*فصل|ال\s+فصل|لا\s*فص\s*ل)(?=[0-9٠-٩])", "الفصل ", cur_line
+        )
+        cur_line = re.sub(r"(?:\b|^)(?:لا\s*فصل|ال\s+فصل|لا\s*فص\s*ل)\b", "الفصل", cur_line)
+        cur_line = re.sub(
+            r"(?:\b|^)(?:لا\s*مادة|ال\s+مادة|لا\s*ماد\s*[ةه])(?=[0-9٠-٩])",
+            "المادة ",
+            cur_line,
+        )
+        cur_line = re.sub(r"(?:\b|^)(?:لا\s*مادة|ال\s+مادة|لا\s*ماد\s*[ةه])\b", "المادة", cur_line)
+        cur_line = re.sub(r"\bا\s*ل\s*م\s*ا\s*د\s*([ةه])\b", r"الماد\1", cur_line)
+        cur_line = re.sub(r"\bم\s*ا\s*د\s*([ةه])\b", r"ماد\1", cur_line)
+        cur_line = re.sub(r"\bا\s*ل\s*ف\s*ص\s*ل\b", "الفصل", cur_line)
+        cur_line = re.sub(r"\b[ةه]\s*د\s*ا\s*م\s*ل\s*ا\b", "المادة", cur_line)
+        cur_line = re.sub(
+            r"\b(الحادي|الحادية|الثاني|الثانية|الثالث|الثالثة|الرابع|الرابعة|الخامس|الخامسة|السادس|السادسة|السابع|السابعة|الثامن|الثامنة|التاسع|التاسعة)\s*:\s*(عشر|عشرة)\b",
+            r"\1 \2",
+            cur_line,
+        )
+        cur_line = re.sub(r"\bالفصل\s+وا\s+ال\b", "الفصل الوا", cur_line)
+        norm_lines.append((p_no, cur_line))
 
     fused: list[tuple[int, str]] = []
     i = 0
@@ -202,6 +311,132 @@ def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str
     while i < n:
         p_no, line = norm_lines[i]
         sline = line.strip()
+        sline_norm = " ".join(sline.split())
+
+        # Handle split 'الفص' + 'ل ...' or 'الماد' + 'ة ...'
+        if sline in ("الفص", "الماد") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if sline == "الفص" and s_next.startswith(("ل ", "ل")):
+                    rem = s_next[1:].lstrip()
+                    norm_lines[j] = (next_p, "الفصل " + rem)
+                    i = j
+                    continue
+                elif sline == "الماد" and s_next.startswith(("ة ", "ة", "ه ", "ه")):
+                    rem = s_next[1:].lstrip()
+                    norm_lines[j] = (next_p, "المادة " + rem)
+                    i = j
+                    continue
+
+        # Handle split 'الباب الا' + 'ول: ...'
+        if sline_norm in ("الباب الا", "الكتاب الا", "القسم الا") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith("ول"):
+                    level_prefix = sline_norm.split()[0]
+                    rem = s_next[2:].lstrip(" \t:：-–.")
+                    fused_text = f"{level_prefix} الأول: {rem}" if rem else f"{level_prefix} الأول"
+                    norm_lines[j] = (next_p, fused_text)
+                    i = j
+                    continue
+
+        # Handle split 'الباب الث' + 'اني: ...'
+        if sline_norm in ("الباب الث", "الكتاب الث", "القسم الث") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith("اني"):
+                    level_prefix = sline_norm.split()[0]
+                    rem = s_next[3:].lstrip(" \t:：-–.")
+                    if rem == "في ا" and j + 1 < n:
+                        k = j + 1
+                        while k < n and not norm_lines[k][1].strip():
+                            k += 1
+                        if k < n and norm_lines[k][1].strip().startswith("ل"):
+                            rem = "في " + "ا" + norm_lines[k][1].strip()
+                            j = k
+                    fused_text = (
+                        f"{level_prefix} الثاني: {rem}" if rem else f"{level_prefix} الثاني"
+                    )
+                    norm_lines[j] = (next_p, fused_text)
+                    i = j
+                    continue
+
+        # Handle split 'الفصل ا' + 'لأربعون'
+        if sline_norm in ("الفصل ا", "المادة ا") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith(("لأ", "لار", "لإ")):
+                    prefix = "الفصل ا" if sline_norm.startswith("الفصل") else "المادة ا"
+                    norm_lines[j] = (next_p, prefix + s_next)
+                    i = j
+                    continue
+
+        # Handle split 'الفصل الث' + 'اني والأربعون'
+        if sline_norm in ("الفصل الث", "المادة الث") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith("اني"):
+                    prefix = "الفصل الث" if sline_norm.startswith("الفصل") else "المادة الث"
+                    norm_lines[j] = (next_p, prefix + s_next)
+                    i = j
+                    continue
+
+        # Handle split 'الفصل الوا' + 'حد والأربعون'
+        if sline_norm in ("الفصل الوا", "المادة الوا") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n:
+                next_p, next_l = norm_lines[j]
+                s_next = next_l.strip()
+                if s_next.startswith("حد"):
+                    prefix = "الفصل الوا" if sline_norm.startswith("الفصل") else "المادة الوا"
+                    norm_lines[j] = (next_p, prefix + s_next)
+                    i = j
+                    continue
+
+        # Handle division title continuations (e.g. adala_002 P12: ':الباب الرابع في فقدان الجنسية\nوالتجريد منها')
+        if sline_norm.startswith("الباب الرابع في فقدان الجنسية") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n and norm_lines[j][1].strip().startswith("والتجريد"):
+                norm_lines[j] = (norm_lines[j][0], "الباب الرابع: في فقدان الجنسية والتجريد منها")
+                i = j
+                continue
+
+        if sline_norm.startswith("القسم الأول: فقدان الجنسية ا") and i + 1 < n:
+            j = i + 1
+            while j < n and not norm_lines[j][1].strip():
+                j += 1
+            if j < n and norm_lines[j][1].strip().startswith("لمغربية"):
+                rem = norm_lines[j][1].strip()[len("لمغربية") :].lstrip()
+                norm_lines[j] = (
+                    norm_lines[j][0],
+                    ("القسم الأول: فقدان الجنسية المغربية " + rem).strip(),
+                )
+                i = j
+                continue
 
         # Case 1: isolated 'ا' before level words (e.g. 'لمادة', 'لفصل', 'لباب')
         if sline == "ا" and i + 1 < n:
@@ -212,8 +447,7 @@ def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str
                 next_p, next_l = norm_lines[j]
                 s_next = next_l.strip()
                 if s_next.startswith(("لمادة", "لماده", "لفصل", "لباب", "لقسم")):
-                    fused_l = "ا" + s_next
-                    norm_lines[j] = (next_p, fused_l)
+                    norm_lines[j] = (next_p, "ا" + s_next)
                     i = j
                     continue
 
@@ -244,22 +478,40 @@ def _fuse_isolated_headings(lines: list[tuple[int, str]]) -> list[tuple[int, str
         if matched_split:
             continue
 
-        # Case 3: isolated level word lines (e.g. 'المادة\n1')
+        # Case 3: isolated level word lines (e.g. 'الفصل\nالرابع' or 'الفصل\nالسابع\nوالعشرون18:')
         if sline in ISOLATED_LEVEL_WORDS:
             j = i + 1
             while j < n and not norm_lines[j][1].strip():
                 j += 1
             if j < n:
                 next_p, next_l = norm_lines[j]
-                m = NUM_OR_ORD_RE.match(next_l.strip())
+                s_next = next_l.strip()
+
+                # Multi-line compound ordinal: unit ordinal on line j, tens on line j+1
+                # e.g. line j is 'السابع' and line j+1 is 'والعشرون18:'
+                if s_next in UNIT_ORDINALS and j + 1 < n:
+                    k = j + 1
+                    while k < n and not norm_lines[k][1].strip():
+                        k += 1
+                    if k < n:
+                        k_p, k_l = norm_lines[k]
+                        k_s = k_l.strip()
+                        if re.match(
+                            r"^و\s*(العشرون|العشرين|الثلاثون|الثلاثين|الأربعون|الأربعين|الخمسون|الخمسين|الستون|الستين|السبعون|السبعين|الثمانون|الثمانين|التسعون|التسعين)",
+                            k_s,
+                        ):
+                            s_next = f"{s_next} {k_s}"
+                            j = k
+
+                m = NUM_OR_ORD_RE.match(s_next)
                 if m:
                     num_val = m.group(1).strip()
-                    suf_val = m.group(2).strip() if m.group(2) else None
+                    suf_val = m.group(2).strip() if len(m.groups()) >= 2 and m.group(2) else None
                     fused_heading = canonical_heading_label(sline, num_val, suf_val)
                     fused.append((p_no, fused_heading))
-                    remainder = next_l.strip()[m.end() :].lstrip(" \t:：-–.")
+                    remainder = s_next[m.end() :].lstrip(" \t:：-–.")
                     if remainder:
-                        norm_lines[j] = (next_p, remainder)
+                        norm_lines[j] = (norm_lines[j][0], remainder)
                         i = j
                     else:
                         i = j + 1

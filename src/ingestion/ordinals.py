@@ -45,6 +45,10 @@ BASE_ORDINALS: dict[str, str] = {
     # Special chapter qualifiers
     "التمهيدي": "0",
     "تمهيدي": "0",
+    "الواحد": "1",
+    "الواحدة": "1",
+    "واحد": "1",
+    "واحدة": "1",
 }
 
 # Compound ordinals 11 to 19
@@ -119,6 +123,10 @@ def _build_ordinals_map() -> dict[str, str]:
     mapping.update(TENS_ORDINALS)
 
     units_for_compounds = [
+        ("الواحد", "1"),
+        ("الواحدة", "1"),
+        ("واحد", "1"),
+        ("واحدة", "1"),
         ("الحادي", "1"),
         ("الحادية", "1"),
         ("الثاني", "2"),
@@ -190,16 +198,18 @@ ISOLATED_LEVEL_WORDS: frozenset[str] = frozenset(
         "فرع",
         "الفصل",
         "فصل",
+        "لافصل",
         "المادة",
         "مادة",
+        "لامادة",
         "الجزء",
         "جزء",
     }
 )
 
 HEADING_START_RE = re.compile(
-    rf"^\s*(الكتاب|كتاب|الباب|باب|القسم|قسم|الفرع|فرع|الفصل|فصل|ا\s*ل\s*ف\s*ص\s*ل|المادة|مادة|ا\s*ل\s*م\s*ا\s*د\s*[ةه]|الجزء|جزء)"
-    rf"\s*([0-9٠-٩]+(?:[-–][0-9٠-٩]+)?|{ORDINALS_PATTERN})"
+    rf"^[\s:：\-–]*(الكتاب|كتاب|الباب|باب|القسم|قسم|الفرع|فرع|الفصل|فصل|ا\s*ل\s*ف\s*ص\s*ل|لا\s*فصل|ال\s+فصل|المادة|مادة|ا\s*ل\s*م\s*ا\s*د\s*[ةه]|لا\s*مادة|ال\s+مادة|الجزء|جزء)"
+    rf"\s*([0-9٠-٩]+(?:[-–][0-9٠-٩]+)?|{ORDINALS_PATTERN})(?:[0-9٠-٩]+)?"
     rf"(?:\s+(مكرر\s+مرتين|مكرر))?"
     rf"(?=\s*[:：\-–.]|\s*$|\s+(?!من(?:\s+|$)|أعلاه|بعده|أدناه))",
     re.UNICODE,
@@ -211,7 +221,7 @@ HEADING_EOL_RE = re.compile(
 )
 
 NUM_OR_ORD_RE = re.compile(
-    rf"^([0-9٠-٩]+(?:[-–][0-9٠-٩]+)?|{ORDINALS_PATTERN})"
+    rf"^([0-9٠-٩]+(?:[-–][0-9٠-٩]+)?|{ORDINALS_PATTERN})(?:[0-9٠-٩]+)?"
     rf"(?:\s+(مكرر\s+مرتين|مكرر))?"
     rf"(?=\s*[:：\-–.]|\s*$|\s+(?!من(?:\s+|$)|أعلاه|بعده|أدناه))",
     re.UNICODE,
@@ -241,6 +251,11 @@ PREV_PREPOSITIONS: tuple[str, ...] = (
     "لا سيما",
     "سيما",
     "بموجب",
+    "من",
+    "في",
+    "عن",
+    "إلى",
+    "أو",
 )
 
 NEXT_POSTPOSITIONS: tuple[str, ...] = (
@@ -249,22 +264,28 @@ NEXT_POSTPOSITIONS: tuple[str, ...] = (
     "أدناه",
     "من هذا القانون",
     "من القانون",
-    "من هذا",
     "من قانون",
     "السالف الذكر",
     "المشار إليه",
     "منه",
     "منها",
     "منهما",
+    "وما يليه",
+    "وما يليها",
+    "وما بعده",
+    "وما بعدها",
+    "وما يليهما",
+    "إلى الفصل",
+    "إلى المادة",
 )
 
 
 def normalize_level_word(word: str) -> str:
     """Normalize level word variants to standard canonical level representation."""
     clean = re.sub(r"\s+", "", word.strip())
-    if clean in ("المادة", "مادة", "الماده", "ماده"):
+    if clean in ("المادة", "مادة", "الماده", "ماده", "لامادة"):
         return "المادة"
-    if clean in ("الفصل", "فصل"):
+    if clean in ("الفصل", "فصل", "لافصل"):
         return "الفصل"
     if clean in ("الباب", "باب"):
         return "الباب"
@@ -286,12 +307,10 @@ def canonical_heading_label(
 ) -> str:
     """Produce canonical label: normalized level word, single space, number/ordinal, optional ' مكرر'."""
     clean_word = re.sub(r"\s+", "", word.strip())
-    if clean_word in ("الماده", "المادة"):
+    if clean_word in ("الماده", "المادة", "ماده", "مادة", "لامادة"):
         clean_word = "المادة"
-    elif clean_word in ("ماده", "مادة"):
-        clean_word = "مادة"
-    elif clean_word in ("الفصل", "فصل"):
-        clean_word = clean_word
+    elif clean_word in ("الفصل", "فصل", "لافصل"):
+        clean_word = "الفصل"
     elif clean_word in ("الباب", "باب"):
         clean_word = clean_word
     elif clean_word in ("الكتاب", "كتاب"):
