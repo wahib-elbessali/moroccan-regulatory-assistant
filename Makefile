@@ -1,4 +1,4 @@
-.PHONY: models up up-light up-gpu down test-isolation seed
+.PHONY: models up up-light up-gpu warm down test-isolation seed
 
 # Owner of the `upload` rows of data/raw/manifest.csv. document_rights is fake for now, so this
 # development UUID is not checked against a user. Override: `make seed OWNER=<uuid>`.
@@ -9,13 +9,21 @@ models:
 
 up:
 	docker compose up -d --wait
+	$(MAKE) warm
 
 up-light:
 	MODE=light docker compose up -d --wait
+	$(MAKE) warm
 
 # Same as `up`, with the NVIDIA card given to Ollama and to the models service (see docker-compose.gpu.yml).
 up-gpu:
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
+	$(MAKE) warm
+
+# Loads the answer model and the narration model onto the card, so the first question does not
+# time out while they load. The `up` targets run it; run it by hand after a plain `docker compose up`.
+warm:
+	docker compose exec -T api python -m src.core.llm.warmup
 
 down:
 	docker compose down
