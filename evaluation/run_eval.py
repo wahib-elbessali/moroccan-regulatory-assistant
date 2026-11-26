@@ -7,7 +7,7 @@ Usage (from the repository root)::
 
     python evaluation/run_eval.py run --out evaluation/results/baseline.jsonl --machine "..."
     python evaluation/run_eval.py summary evaluation/results/baseline.jsonl
-    python evaluation/run_eval.py compare before.jsonl after.jsonl
+    python evaluation/run_eval.py compare before.jsonl after.jsonl [more.jsonl ...]
 """
 
 from __future__ import annotations
@@ -331,6 +331,9 @@ def evaluate(
             None,
         )
         row["hit_rank"], row["hit"], row["rr"] = rank, rank is not None, (1 / rank if rank else 0.0)
+    if args.search_only:
+        row["leaks"] = leaked_files(q, [c["source_file"] for c in chunks])
+        return row
 
     result = api.ask(token, q["question"], q["use_web"])
     answer = result["answer"]
@@ -411,6 +414,7 @@ def setup_line(args: argparse.Namespace, n_questions: int) -> dict:
         "cpus": os.cpu_count(),
         "gpu": gpu(),
         "grader": not args.no_grader,
+        "search_only": args.search_only,
         "questions": n_questions,
         "config": config,
     }
@@ -428,15 +432,20 @@ def scores(rows: list[dict]) -> dict[str, Any]:
     searched = [r for r in rows if "hit" in r and r["role"] != "admin"]
     to_answer = [r for r in rows if r["expected_status"] == "answered"]
     graded = [r["grade"] for r in rows if r.get("grade")]
+    asked = [r for r in rows if "status_ok" in r]  # a --search-only row has no answer
     secs = sorted(r["seconds"] for r in rows if r.get("seconds") is not None)
+    search_secs = [r["search_seconds"] for r in rows if r.get("search_seconds") is not None]
     return {
         "questions": len(rows),
         "hit@10": mean([float(r["hit"]) for r in searched]),
         "MRR": mean([r["rr"] for r in searched]),
-        "status ok": mean([float(r["status_ok"]) for r in rows]),
-        "answered+cited": mean([float(r.get("cited_ok", False)) for r in to_answer]),
+        "search s": statistics.median(search_secs) if search_secs else None,
+        "status ok": mean([float(r["status_ok"]) for r in asked]),
+        "answered+cited": mean(
+            [float(r.get("cited_ok", False)) for r in to_answer if "status_ok" in r]
+        ),
         "unknown ok": mean(
-            [float(r["status_ok"]) for r in rows if r["expected_status"] == "unknown"]
+            [float(r["status_ok"]) for r in asked if r["expected_status"] == "unknown"]
         ),
         "faithful": mean([g.get("faithfulness") for g in graded]),
         "relevant": mean([g.get("relevance") for g in graded]),
@@ -495,7 +504,12 @@ def summary(path: Path) -> str:
         f"{setup.get('date')} · commit {setup.get('git_commit')}"
         + (" (with local changes)" if setup.get("git_changed") else "")
         + f" · mode {cfg.get('mode')} · model {model} · machine {setup.get('machine') or setup.get('platform')}"
-        + f" · GPU {setup.get('gpu') or 'none'} · grader {'on' if setup.get('grader') else 'off'}",
+        + f" · GPU {setup.get('gpu') or 'none'}"
+        + (
+            " · search only"
+            if setup.get("search_only")
+            else f" · grader {'on' if setup.get('grader') else 'off'}"
+        ),
         "",
         table("Overall", {"all": rows}),
         table("By type", by(rows, "type")),
@@ -505,7 +519,10 @@ def summary(path: Path) -> str:
     failed = [
         r
         for r in rows
-        if not r["status_ok"] or r.get("leaks") or r.get("hit") is False or r.get("search_error")
+        if r.get("status_ok") is False
+        or r.get("leaks")
+        or r.get("hit") is False
+        or r.get("search_error")
     ]
     if failed:
         out += [
@@ -516,42 +533,63 @@ def summary(path: Path) -> str:
         ]
         for r in failed:
             out.append(
-                f"| {r['id']} | {r['expected_status']} | {r['status'] or (r.get('error') or {}).get('code')} "
+                f"| {r['id']} | {r['expected_status']} | {fmt(r.get('status') or (r.get('error') or {}).get('code'))} "
                 f"| {fmt(r.get('hit_rank'))} | {fmt(r.get('cited_ok'))} | {', '.join(r.get('leaks') or []) or '–'} "
                 f"| {'search ' + r['search_error'][:3] if r.get('search_error') else '–'} |"
             )
     return "\n".join(out) + "\n"
 
 
-def compare(old_path: Path, new_path: Path) -> str:
-    (old_setup, old), (new_setup, new) = read_results(old_path), read_results(new_path)
-    common = {r["id"] for r in old} & {r["id"] for r in new}
-    old = [r for r in old if r["id"] in common]
-    new = [r for r in new if r["id"] in common]
-    so, sn = scores(old), scores(new)
+def flatten(value: Any, prefix: str = "") -> dict[str, Any]:
+    """``{"retrieval": {"rerank_top_n": 16}}`` -> ``{"retrieval.rerank_top_n": 16}``."""
+    if not isinstance(value, dict):
+        return {prefix: value}
+    out: dict[str, Any] = {}
+    for key, item in value.items():
+        out.update(flatten(item, f"{prefix}.{key}" if prefix else str(key)))
+    return out
+
+
+def compare(paths: list[Path]) -> str:
+    """Two runs or more side by side: the settings that differ, the scores, the questions that
+    changed. Only the questions present in every run are counted."""
+    runs = [read_results(path) for path in paths]
+    common = set.intersection(*({r["id"] for r in rows} for _, rows in runs))
+    by_id = [{r["id"]: r for r in rows if r["id"] in common} for _, rows in runs]
+    all_scores = [scores(list(rows.values())) for rows in by_id]
+
+    def line(name: str, values: list[Any]) -> str:
+        return f"| {name} | " + " | ".join(fmt(v) for v in values) + " |"
+
+    configs = [flatten(setup.get("config", {})) for setup, _ in runs]
+    differ = sorted(
+        key
+        for key in set().union(*configs)
+        if len({json.dumps(c.get(key), sort_keys=True) for c in configs}) > 1
+    )
     out = [
-        f"## {old_path.name} → {new_path.name} ({len(common)} questions in both)",
+        f"## Comparison of {len(paths)} runs ({len(common)} questions in all of them)",
         "",
-        "| | before | after |",
-        "|---|---|---|",
-        f"| commit | {old_setup.get('git_commit')} | {new_setup.get('git_commit')} |",
-        f"| mode | {old_setup.get('config', {}).get('mode')} | {new_setup.get('config', {}).get('mode')} |",
-        *(f"| {k} | {fmt(so[k])} | {fmt(sn[k])} |" for k in so),
+        "| | " + " | ".join(path.stem for path in paths) + " |",
+        "|---" * (len(paths) + 1) + "|",
+        line("commit", [setup.get("git_commit") for setup, _ in runs]),
+        line("search only", [bool(setup.get("search_only")) for setup, _ in runs]),
+        *(line(key, [c.get(key) for c in configs]) for key in differ),
+        *(line(k, [s[k] for s in all_scores]) for k in all_scores[0]),
         "",
     ]
     changed = []
-    old_by_id = {r["id"]: r for r in old}
-    for r in new:
-        o = old_by_id[r["id"]]
-        for key in ("status_ok", "hit", "cited_ok"):
-            if key in r and o.get(key) != r.get(key):
-                changed.append(f"| {r['id']} | {key} | {fmt(o.get(key))} | {fmt(r.get(key))} |")
+    for id_ in sorted(common):
+        for key in ("status_ok", "hit_rank", "cited_ok"):
+            values = [rows[id_].get(key) for rows in by_id]
+            if any(key in rows[id_] for rows in by_id) and len({repr(v) for v in values}) > 1:
+                changed.append(line(f"{id_} | {key}", values))
     if changed:
         out += [
             "### Questions that changed",
             "",
-            "| id | score | before | after |",
-            "|---|---|---|---|",
+            "| id | score | " + " | ".join(path.stem for path in paths) + " |",
+            "|---" * (len(paths) + 2) + "|",
             *changed,
         ]
     return "\n".join(out) + "\n"
@@ -603,10 +641,16 @@ def run(args: argparse.Namespace) -> int:
             grade_note = ""
             if row.get("grade"):
                 grade_note = f", faithful {fmt(row['grade'].get('faithfulness'))}, relevant {fmt(row['grade'].get('relevance'))}"
+            if args.search_only:
+                answer_note = f"search {row['search_seconds']} s"
+            else:
+                answer_note = (
+                    f"{row['seconds']} s, {row['status'] or (row['error'] or {}).get('code')}"
+                    f" ({'ok' if row['status_ok'] else 'expected ' + q['expected_status']})"
+                )
             print(
-                f"{row['seconds']} s, {row['status'] or (row['error'] or {}).get('code')}"
-                f" ({'ok' if row['status_ok'] else 'expected ' + q['expected_status']})"
-                f", search rank {fmt(row.get('hit_rank'))}{grade_note}"
+                f"{answer_note}, search rank {fmt(row.get('hit_rank'))}{grade_note}"
+                + (f", search failed {row['search_error'][:3]}" if row.get("search_error") else "")
                 + (f", LEAK {row['leaks']}" if row["leaks"] else ""),
                 flush=True,
             )
@@ -628,6 +672,11 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--type", nargs="+", help="only these types, e.g. simple access")
     p_run.add_argument("--ids", nargs="+", help="only these question ids")
     p_run.add_argument("--no-grader", action="store_true", help="skip faithfulness and relevance")
+    p_run.add_argument(
+        "--search-only",
+        action="store_true",
+        help="only POST /search (hit@10, MRR, search time, leaks): no answer, no grader",
+    )
     p_run.add_argument("--grader-model", help="model for the grader (default: the answer model)")
     p_run.add_argument("--machine", default="", help="a short description of the machine")
     p_run.add_argument("--api", default="http://localhost:8000")
@@ -642,17 +691,20 @@ def main(argv: list[str] | None = None) -> int:
 
     p_sum = sub.add_parser("summary", help="print the score tables of a results file")
     p_sum.add_argument("results", type=Path)
-    p_cmp = sub.add_parser("compare", help="compare two results files, question by question")
-    p_cmp.add_argument("old", type=Path)
-    p_cmp.add_argument("new", type=Path)
+    p_cmp = sub.add_parser("compare", help="compare two results files or more, side by side")
+    p_cmp.add_argument("results", type=Path, nargs="+")
 
     args = parser.parse_args(argv)
     if args.command == "summary":
         print(summary(args.results))
         return 0
     if args.command == "compare":
-        print(compare(args.old, args.new))
+        if len(args.results) < 2:
+            parser.error("compare needs at least two results files")
+        print(compare(args.results))
         return 0
+    if args.search_only:
+        args.no_grader = True
     args.compose = shlex.split(args.compose, posix=os.name != "nt")
     return run(args)
 
