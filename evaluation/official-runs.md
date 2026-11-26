@@ -48,8 +48,8 @@ Check that the language model is on the card too:
 docker compose exec llm ollama ps                 # the PROCESSOR column must say "100% GPU"
 ```
 
-If either check fails, write it down and send it with the results (see 6): the times then are not
-the GPU times.
+If either check fails, stop there and send the output of both commands: the models do not all fit
+on the card, and the setup must be fixed first, for the demo too.
 
 In every command below, replace `MACHINE` with the GPU, the memory and the processor, for example
 `"RTX 4060 8 GB, 32 GB RAM, i7-12700H"`.
@@ -94,7 +94,9 @@ put it back (`git checkout -- config.yaml`) before the next one.
 | Run | Change in `config.yaml` | Command |
 |---|---|---|
 | `iter1` | `max_iterations: 1` (no reformulation) | `python evaluation/run_eval.py run --out evaluation/results/iter1.jsonl --machine "MACHINE"` |
-| `sub1` | `max_sub_questions: 1` (no splitting) | same command, `--out evaluation/results/sub1.jsonl` |
+| `sub1` | `max_sub_questions: 1` (no splitting) | `python evaluation/run_eval.py run --type multi_part --out evaluation/results/sub1.jsonl --machine "MACHINE"` |
+
+`sub1` runs only the multi-part questions, the ones splitting is for. This keeps the run short.
 
 ## 5. The smaller model
 
@@ -109,9 +111,9 @@ python evaluation/run_eval.py run --out evaluation/results/light.jsonl --grader-
 ```
 
 The warm-up question loads the small model and the grader, so the timed run does not include
-loading them. `--grader-model qwen2.5:7b` keeps the same grader as the other
-runs, so only the answers change. If `ollama ps` does not list both models on the card, write it
-down: the card is then too small for both, and the light times include reloading the models.
+loading them. `--grader-model qwen2.5:7b` keeps the same grader as the other runs, so only the
+answers change. If `ollama ps` does not list both models on the card, stop there and send its
+output.
 
 Then back to the normal stack:
 
