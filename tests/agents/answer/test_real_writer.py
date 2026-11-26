@@ -419,6 +419,40 @@ def test_excerpt_validator_accepts_multiline_excerpt_from_pdf_source() -> None:
     )
 
 
+def test_excerpt_validator_recovers_source_sentence_when_judge_alters_few_words() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، على ألا يتجاوز سنه " "ست سنوات."
+    judge_excerpt = (
+        "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، مع أن يتجاوز سنه " "ست سنوات."
+    )
+
+    assert checked_excerpt(judge_excerpt, source, min_chars=10) == source
+
+
+def test_invalid_judge_fallback_matches_french_claim_to_arabic_legal_source() -> None:
+    from src.agents.answer.citations import Claim, Source
+    from src.agents.answer.judge import _word_check
+
+    source_text = "يجب إيداع طلب التجنس قبل 30 يونيو."
+    claim = Claim(
+        text=(
+            "La demande de naturalisation, la demande de naturalisation, "
+            "doit être déposée avant le 30 juin."
+        ),
+        cited=[1],
+    )
+    sources = [
+        Source(number=1, kind="corpus", title="Loi", text=source_text),
+    ]
+
+    _word_check(claim, sources, min_chars=10)
+
+    assert claim.supported is True
+    assert claim.source_n == 1
+    assert claim.excerpt == source_text
+
+
 def test_renumber_preserves_line_breaks_between_list_items() -> None:
     from src.agents.answer.citations import Claim, Source, renumber
 

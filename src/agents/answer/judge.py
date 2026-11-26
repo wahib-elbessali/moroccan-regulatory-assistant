@@ -21,6 +21,18 @@ from src.retrieval.tokenizer import STOPWORDS
 
 _LOGGER = logging.getLogger(__name__)
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
+_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
+_LEGAL_TERM_GROUPS = {
+    "application": {"demande", "طلب", "طلبات", "الطلب"},
+    "naturalization": {"naturalisation", "naturalization", "تجنس", "التجنس"},
+    "deposit": {"déposer", "deposer", "déposée", "deposee", "إيداع", "ايداع"},
+    "amount": {"montant", "مبلغ", "المبلغ", "أجرة", "اجرة"},
+    "support": {"aide", "soutien", "دعم", "الدعم", "منحة", "المنحة"},
+    "child": {"enfant", "طفل", "الطفل", "أطفال", "اطفال"},
+    "salary": {"salaire", "أجر", "اجر", "الأجر", "الاجر"},
+    "law": {"loi", "قانون", "القانون", "مادة", "المادة", "article"},
+    "date": {"date", "avant", "قبل", "تاريخ", "يوم", "شهر", "سنة"},
+}
 
 
 @dataclass(frozen=True)
@@ -85,11 +97,25 @@ def _tokens(text: str) -> list[str]:
     return [word for word in normalize_ar(text).split() if word not in STOPWORDS]
 
 
+def _key_terms(text: str) -> set[str]:
+    """Extract numbers and shared French/Arabic legal concepts for fallback matching."""
+    from src.ingestion.normalize import normalize_ar
+
+    normalized = normalize_ar(text)
+    tokens = set(normalized.split())
+    terms = {f"number:{number.replace(',', '.')}" for number in _NUMBER_RE.findall(normalized)}
+    for concept, variants in _LEGAL_TERM_GROUPS.items():
+        normalized_variants = {normalize_ar(variant) for variant in variants}
+        if tokens & normalized_variants:
+            terms.add(f"legal:{concept}")
+    return terms
+
+
 def _word_check(claim: Claim, sources: list[Source], min_chars: int) -> None:
-    """P4-14 fallback: keep claims with at least half their words in a cited source."""
+    """P4-14 fallback: match cited source sentences by numbers/legal concepts."""
     best: tuple[float, int, str] | None = None
-    claim_words = _tokens(claim.text)
-    if not claim_words:
+    claim_terms = _key_terms(claim.text)
+    if not claim_terms:
         claim.supported = False
         claim.reason = "not_supported"
         return
@@ -100,9 +126,8 @@ def _word_check(claim: Claim, sources: list[Source], min_chars: int) -> None:
         if source.number not in claim.cited:
             continue
         for sentence in split_claims(source.text, set()):
-            sentence_words = set(_tokens(sentence.text))
-            overlap = sum(word in sentence_words for word in claim_words)
-            ratio = overlap / len(claim_words)
+            sentence_terms = _key_terms(sentence.text)
+            ratio = len(claim_terms & sentence_terms) / len(claim_terms)
             if best is None or ratio > best[0]:
                 best = (ratio, source.number, sentence.text)
 
