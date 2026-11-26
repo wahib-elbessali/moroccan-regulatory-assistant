@@ -31,3 +31,6 @@ src/ui/dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# evaluation runs (sent, not committed)
+evaluation/results/
