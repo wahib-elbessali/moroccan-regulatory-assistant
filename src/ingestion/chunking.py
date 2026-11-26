@@ -95,29 +95,51 @@ def _is_cross_reference_citation(
     while k >= 0 and not lines[k][1].strip():
         k -= 1
     if k >= 0:
-        prev_line = lines[k][1].strip()
-        if any(prev_line.endswith(prep) for prep in PREV_PREPOSITIONS):
+        prev_line = lines[k][1].strip().rstrip(".,:؛!؟-–")
+        words = prev_line.split()
+        last_word = words[-1] if words else ""
+        last_two_collapsed = "".join(words[-2:]) if len(words) >= 2 else ""
+        if any(
+            last_word == prep
+            or last_two_collapsed == prep
+            or (len(prep) > 3 and prev_line.endswith(prep))
+            for prep in PREV_PREPOSITIONS
+        ):
             return True
 
     # Check if the line itself has citation prepositions before the match
     line = lines[current_idx][1]
-    prefix = line[: heading_match.start()].strip()
-    if prefix and any(prefix.endswith(prep) for prep in PREV_PREPOSITIONS):
-        return True
+    prefix = line[: heading_match.start()].strip().rstrip(".,:؛!؟-–")
+    if prefix:
+        words_prefix = prefix.split()
+        last_word_prefix = words_prefix[-1] if words_prefix else ""
+        last_two_prefix = "".join(words_prefix[-2:]) if len(words_prefix) >= 2 else ""
+        if any(
+            last_word_prefix == prep
+            or last_two_prefix == prep
+            or (len(prep) > 3 and prefix.endswith(prep))
+            for prep in PREV_PREPOSITIONS
+        ):
+            return True
 
     # Check if following text starts with a cross-reference postposition
     remainder = line[heading_match.end() :].lstrip(" \t:：-–.،;؛")
     if any(remainder.startswith(post) for post in NEXT_POSTPOSITIONS):
         return True
 
-    # Check next non-empty line
+    # Check next non-empty line (isolated wrapped postposition)
     k = current_idx + 1
     while k < len(lines) and not lines[k][1].strip():
         k += 1
     if k < len(lines):
         next_line = lines[k][1].lstrip(" \t:：-–.،;؛")
-        if any(next_line.startswith(post) for post in NEXT_POSTPOSITIONS):
-            return True
+        for post in NEXT_POSTPOSITIONS:
+            if next_line.startswith(post):
+                # Multi-word postposition ("من هذا القانون", "وما يليه", etc.) is always a citation.
+                # Single-word adverbs ("أعلاه", "بعده", etc.) only match if isolated to prevent
+                # false positives on bidi-wrapped paragraph lines in multi-column layouts.
+                if len(post.split()) > 1 or len(next_line.split()) <= 3:
+                    return True
 
     return False
 
@@ -161,6 +183,25 @@ def _match_heading(
         canonical = canonical_heading_label(m_start.group(1), num_ord, suffix)
 
         remainder = line[m_start.end() :].strip().lstrip(" \t:：-–.")
+        # Check if the heading is followed by quotation marks indicating a quoted citation from another text
+        if remainder.startswith(('"', "«", "”", "“")):
+            return None
+        if not remainder:
+            # Check up to 2 non-empty lines ahead for standalone opening quote line (e.g. adala_013 footnote citations)
+            k_quote = idx + 1
+            while k_quote < len(lines) and not lines[k_quote][1].strip():
+                k_quote += 1
+            count_checked = 0
+            while k_quote < len(lines) and count_checked < 2:
+                q_candidate = lines[k_quote][1].strip().lstrip(" \t:：-–.")
+                if q_candidate in ('"', "«", "”", "“"):
+                    return None
+                if q_candidate:
+                    break
+                k_quote += 1
+                while k_quote < len(lines) and not lines[k_quote][1].strip():
+                    k_quote += 1
+                count_checked += 1
         hier_label = f"{canonical}: {remainder}" if remainder else canonical
         is_art = word == "المادة"
         return _HeadingMatch(

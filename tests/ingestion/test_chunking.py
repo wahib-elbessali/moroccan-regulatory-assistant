@@ -702,3 +702,59 @@ def test_adala_002_regression_nationality_code_fasl() -> None:
     assert len(madda_articles) == 0
     # Total chunks = 1 preamble + 46 articles = 47
     assert len(chunks) == 47
+
+
+def test_quoted_footnote_articles_are_not_chunked_as_main_articles() -> None:
+    """Quoted articles cited inside footnotes (followed by quote marks) must not create article chunks."""
+    content = (
+        "المادة 1\n"
+        "يهدف هذا القانون إلى تحديد الفئات المستفيدة من صندوق التكافل العائلي.\n"
+        "3 - أنظر المادة 1 من المرسوم رقم 2.11.195:\n"
+        ":المادة الأولى\n"
+        '"\n'
+        "يصادق على الاتفاقية المتعلقة بتدبير عمليات صندوق التكافل العائلي.\n"
+        '"\n'
+        "المادة 2\n"
+        "يستفيد من التسبيقات المالية للصندوق كل من صدر لفائدته مقرر قضائي بالنفقة."
+    )
+    pages = [Page(number=1, text=content)]
+    chunks = chunk_document("test_quoted_doc", pages)
+    articles = [c.article for c in chunks if c.article]
+    assert articles == ["المادة 1", "المادة 2"]
+
+
+def test_multiline_article_body_starting_with_aalah_is_not_citation() -> None:
+    """An article heading followed by a body sentence starting with 'أعلاه' (due to bidi) is not suppressed."""
+    content = (
+        "المادة 6\n"
+        "يعفى من مباراة ولوج مهنة المفوض القضائي مع وجوب قضاء فترة التمرين.\n"
+        "المادة 7\n"
+        "أعلاه والمترشح الناجح في المباراة المشار إليها في المادة يعين مفوضا قضائيا متمرنا.\n"
+        "المادة 8\n"
+        "يؤدي المفوض القضائي اليمين القانونية أمام المحكمة الابتدائية."
+    )
+    pages = [Page(number=1, text=content)]
+    chunks = chunk_document("test_aalah_doc", pages)
+    articles = [c.article for c in chunks if c.article]
+    assert articles == ["المادة 6", "المادة 7", "المادة 8"]
+
+
+def test_citation_prepositions_word_boundary_does_not_suppress_articles() -> None:
+    """Words ending in 'عن' like 'طعن'/'للطعن' or 'من' like 'الثمن' must not trigger citation suppression."""
+    content = (
+        "مقرر الاستجابة لطلب الإذن بزواج القاصر غير قابل لأي طعن\n"
+        "المادة 21\n"
+        "زواج القاصر متوقف على موافقة نائبه الشرعي.\n"
+        "ويكون قرارها قابلا للطعن\n"
+        "المادة 183\n"
+        "إذا استجدت ظروف أصبح معها تنظيم الزيارة المقررة ضارا بالمحضون.\n"
+        "وتم البيع بهذا الثمن\n"
+        "المادة 274\n"
+        "يتم بيع العقار أو المنقول المأذون به طبقا للإجراءات القانونية."
+    )
+    pages = [Page(number=1, text=content)]
+    chunks = chunk_document("test_doc", pages)
+    articles = [c.article for c in chunks if c.article]
+    assert "المادة 21" in articles
+    assert "المادة 183" in articles
+    assert "المادة 274" in articles

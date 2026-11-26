@@ -132,6 +132,30 @@ def remove_headers_footers(pages: list[Page]) -> list[Page]:
 
             # Rule 2: Number-only lines removed ONLY in boundary positions
             if idx in boundary_indices and NUMBER_ONLY_PATTERN.match(stripped):
+                # Do not remove if preceded by an isolated heading level word (e.g. 'المادة\n13')
+                prev_k = idx - 1
+                while prev_k >= 0 and not lines[prev_k].strip():
+                    prev_k -= 1
+                prev_word = lines[prev_k].strip() if prev_k >= 0 else ""
+                clean_prev = re.sub(r"\s+", "", prev_word)
+                if clean_prev in (
+                    "المادة",
+                    "مادة",
+                    "الفصل",
+                    "فصل",
+                    "الباب",
+                    "باب",
+                    "القسم",
+                    "قسم",
+                    "الكتاب",
+                    "كتاب",
+                    "الفرع",
+                    "فرع",
+                    "الجزء",
+                    "جزء",
+                ):
+                    kept_lines.append(line)
+                    continue
                 continue
 
             # Rule 1: Repeating headers or footers in boundary positions
