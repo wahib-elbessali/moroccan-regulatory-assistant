@@ -434,6 +434,17 @@ def test_excerpt_validator_accepts_multiline_excerpt_from_pdf_source() -> None:
     )
 
 
+def test_excerpt_validator_recovers_source_sentence_when_judge_alters_few_words() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، على ألا يتجاوز سنه " "ست سنوات."
+    judge_excerpt = (
+        "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، مع أن يتجاوز سنه " "ست سنوات."
+    )
+
+    assert checked_excerpt(judge_excerpt, source, min_chars=10) == source
+
+
 def test_renumber_preserves_line_breaks_between_list_items() -> None:
     from src.agents.answer.citations import Claim, Source, renumber
 

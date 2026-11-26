@@ -212,18 +212,32 @@ def checked_excerpt(excerpt: str, source_text: str, min_chars: int) -> str | Non
     normalized_excerpt = normalize_ar(excerpt)
     if len(normalized_excerpt) < min_chars:
         return None
-    if normalized_excerpt not in normalize_ar(source_text):
-        return None
-    if excerpt in source_text:
+    normalized_source = normalize_ar(source_text)
+    if normalized_excerpt in normalized_source and excerpt in source_text:
         return excerpt
 
-    # Normalization may make a model's copy differ from the original glyphs. In that case,
-    # store the source sentence containing the normalized match, never the model's paraphrase.
+    # Prefer the original source sentence, even if the judge slightly paraphrased its excerpt.
+    # This keeps the citation verifiable and prevents model-written text from being displayed.
+    from src.retrieval.tokenizer import STOPWORDS
+
+    excerpt_words = {word for word in normalized_excerpt.split() if word not in STOPWORDS}
+    if not excerpt_words:
+        return None
+
+    best_sentence: str | None = None
+    best_ratio = 0.0
     for sentence in _CLAIM_BOUNDARY_RE.split(source_text):
         candidate = sentence.strip()
-        if normalized_excerpt in normalize_ar(candidate):
-            return candidate if len(normalize_ar(candidate)) >= min_chars else None
-    return None
+        normalized_candidate = normalize_ar(candidate)
+        if len(normalized_candidate) < min_chars:
+            continue
+        candidate_words = {word for word in normalized_candidate.split() if word not in STOPWORDS}
+        ratio = len(excerpt_words & candidate_words) / len(excerpt_words)
+        if ratio > best_ratio:
+            best_sentence, best_ratio = candidate, ratio
+
+    # Accept only when most meaningful excerpt words occur in one source sentence.
+    return best_sentence if best_ratio >= 0.6 else None
 
 
 def cited_source_text(claims: list[Claim], sources: list[Source]) -> list[Source]:
