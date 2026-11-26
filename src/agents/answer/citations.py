@@ -9,6 +9,7 @@ from html import escape, unescape
 from src.core.contracts.models import Citation, Passage, WebResult
 
 _MARKER_RE = re.compile(r"\[(\d+)\]")
+_MARKERS_ONLY_RE = re.compile(r"(?:\s*\[\d+\])+\s*")
 _CLAIM_BOUNDARY_RE = re.compile(r"(?<!^[0-9٠-٩]\.)(?<=[.!؟?])(?=\s|$)|\r?\n+", re.MULTILINE)
 _LIST_NUMBER_PERIOD_RE = re.compile(r"^(\s*[0-9٠-٩]{1,3}\s*)\.(?=\s)")
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|[0-9٠-٩]{1,3}\s*[-–—.)])\s+")
@@ -122,6 +123,17 @@ def split_claims(text: str, valid_sources: set[int]) -> list[Claim]:
             lambda match: match.group(1) + "\x00", line, count=1
         )
         fragments.extend(_CLAIM_BOUNDARY_RE.split(protected_line))
+
+    # Sentence-boundary splitting can leave a trailing citation marker as its own
+    # fragment. Attach it to the preceding sentence so it is never judged as a claim.
+    joined_fragments: list[str] = []
+    for fragment in fragments:
+        if _MARKERS_ONLY_RE.fullmatch(fragment):
+            if joined_fragments:
+                joined_fragments[-1] = f"{joined_fragments[-1].rstrip()} {fragment.strip()}"
+            continue
+        joined_fragments.append(fragment)
+    fragments = joined_fragments
 
     for fragment in fragments:
         fragment = fragment.replace("\x00", ".")
