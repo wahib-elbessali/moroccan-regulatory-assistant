@@ -1,7 +1,6 @@
 import pytest
 
 from src.agents.orchestrator.reformulation_guard import (
-    REFORMULATE_RULES,
     keeps_meaning,
     question_parts,
 )
@@ -31,6 +30,9 @@ def test_two_part_question_is_split():
     assert len(question_parts(Q2)) == 2
 
 
-def test_prompt_rules_present():
-    assert "never replace a legal term" in REFORMULATE_RULES
-    assert "Keep every part of the question" in REFORMULATE_RULES
+def test_one_part_question_with_a_question_word_is_not_split():
+    q = (
+        "حسب المادة 16 من مشروع القانون الافتراضي بشأن حماية المعطيات الشخصية، "
+        "ما هو الأجل الأقصى لإعداد خطة التصحيح؟"
+    )
+    assert len(question_parts(q)) == 1

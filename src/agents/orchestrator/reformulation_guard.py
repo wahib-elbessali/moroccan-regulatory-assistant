@@ -13,7 +13,7 @@ import re
 _DIACRITICS = re.compile(r"[\u064B-\u065F\u0670\u0640]")
 _WORD = re.compile(r"\w+", re.UNICODE)
 _ARABIC = re.compile(r"[\u0600-\u06FF]")
-_SPLIT = re.compile(r"[؟?]|،\s*(?=و)|\s(?=و?(?:لمن|ما|ماذا|كيف|متى|أين|هل)\s)")
+_SPLIT = re.compile(r"[؟?]|،\s*(?=و)|\s(?=و(?:لمن|ما|ماذا|كيف|متى|أين|هل|من)\s)")
 
 STOP = {
     "ما",
@@ -209,15 +209,3 @@ def complete_sub_questions(question: str, sub_questions: list[str], max_n: int) 
     if len(sub_questions) + len(missing) > max_n:
         return [question]
     return sub_questions + missing
-
-
-# Added next to the existing reformulation rules in the system prompt.
-REFORMULATE_RULES = (
-    "Rules:\n"
-    '- Keep every legal term of the question exactly as written (for example "الأرامل", '
-    '"وضعية هشة", "الدعم المباشر", names of laws and documents, numbers). You may add a '
-    "synonym next to a term or rephrase the words around it, but never replace a legal term "
-    "by another word.\n"
-    "- Keep every part of the question. If it asks two things, the new query must ask both.\n"
-    "- Do not change who or what the question is about.\n"
-)
