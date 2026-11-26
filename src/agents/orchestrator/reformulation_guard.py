@@ -192,6 +192,45 @@ def missing_french_parts(question: str, sub_questions: list[str]) -> list[str]:
     return missing
 
 
+# --- Single questions --------------------------------------------------------------------------
+# Anything that can join two parts: a comma, a second "?", "and", or a second question word.
+_AR_JOIN = re.compile(
+    r"[،,؛;]|[؟?].*\S|(?<!\w)(?:و|أو|ثم|وال\w+|و(?:لمن|ما|ماذا|كيف|متى|أين|هل|من|كم))(?!\w)"
+)
+_AR_ASK = re.compile(r"(?<!\w)(?:لمن|ما|ماذا|كيف|متى|أين|هل|كم)(?!\w)")
+_FR_JOIN = re.compile(r"[,;]|\?.*\S|\b(?:et|ou|puis|ainsi que)\b(?!\s*\?)", re.IGNORECASE)
+_FR_ASK = re.compile(
+    r"\b(?:quels?|quelles?|qui|quand|comment|combien|pourquoi)\b|\boù(?!\w)", re.IGNORECASE
+)
+# Chinese, Japanese and Korean characters: the 7B sometimes mixes them into Arabic.
+_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+
+
+def has_foreign_script(text: str) -> bool:
+    return bool(_CJK.search(text))
+
+
+def merge_needless_split(question: str, sub_questions: list[str]) -> list[str]:
+    """One search for a question that asks one thing, whatever the planner returned.
+
+    Arabic: the question itself replaces sub-questions that all rephrase it (each shares a
+    content word with it). French: the sub-questions are Arabic, so the first one is kept.
+    Other languages are left as planned.
+    """
+    if len(sub_questions) < 2:
+        return sub_questions
+    if is_arabic(question):
+        if _AR_JOIN.search(question) or len(_AR_ASK.findall(question)) > 1:
+            return sub_questions
+        words = content_words(question)
+        if all(content_words(s) & words for s in sub_questions):
+            return [question]
+    elif is_french(question):
+        if not _FR_JOIN.search(question) and len(_FR_ASK.findall(question)) <= 1:
+            return sub_questions[:1]
+    return sub_questions
+
+
 def complete_sub_questions(question: str, sub_questions: list[str], max_n: int) -> list[str]:
     """The plan with every dropped part of the question added back as a sub-question.
 

@@ -23,6 +23,8 @@ PLAN_SYSTEM = (
     "terms with the standard Arabic term: veuve = الأرملة (plural الأرامل), situation de "
     "vulnérabilité = وضعية هشة, soutien direct = الدعم المباشر. Never replace a legal term by "
     "another word, and keep names of laws, decrees and numbers unchanged.\n"
+    "Keep acronyms written in Latin letters exactly as written (for example RGPD): never "
+    "translate or expand them.\n"
     "Also set needs_web to true when answering needs information that is not in Moroccan legal "
     "texts: foreign or European law, recent news, or the definition of a general concept. Set it "
     "to false for a question about a Moroccan text.\n"
