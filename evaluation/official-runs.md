@@ -36,16 +36,23 @@ docker compose logs models | grep "loaded on"     # must say "models loaded on c
 
 Check that `.env` has `ADMIN_USERNAME` and `ADMIN_PASSWORD`: the script logs in with them.
 
-Then one question to load the models:
+`make up-gpu` ends with `make warm`: one short request to the answer model and to the narration
+model, with the context window the app uses (`llm.num_ctx`, 16384). Loading them takes longer
+than the 60 s a question may take, so without it the first question fails with `service_error`.
+The `llm` service then keeps them on the card (`OLLAMA_KEEP_ALIVE=-1`): Ollama's default unloads a
+model after 5 idle minutes, and the next question would fail the same way. After a plain
+`docker compose up` or a restart of `llm`, run `make warm` again.
+
+Then one question to check the whole chain:
 
 ```
 python evaluation/run_eval.py run --ids p1-03 --no-grader --out evaluation/results/warmup.jsonl --machine "warm-up"
 ```
 
-Check that the language model is on the card too:
+Check that the language models are on the card too, and stay there:
 
 ```
-docker compose exec llm ollama ps                 # the PROCESSOR column must say "100% GPU"
+docker compose exec llm ollama ps                 # "100% GPU" and UNTIL "Forever" for each model
 ```
 
 If either check fails, stop there and send the output of both commands: the models do not all fit
@@ -105,6 +112,7 @@ when the stack starts, not in `config.yaml`:
 
 ```
 MODE=light docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
+make warm                                         # loads the small model and the narration model
 python evaluation/run_eval.py run --ids p1-03 --grader-model qwen2.5:7b --out evaluation/results/warmup-light.jsonl --machine "warm-up"
 docker compose exec llm ollama ps                 # both models listed, "100% GPU"
 python evaluation/run_eval.py run --out evaluation/results/light.jsonl --grader-model qwen2.5:7b --machine "MACHINE"
