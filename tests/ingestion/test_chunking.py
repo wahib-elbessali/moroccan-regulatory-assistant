@@ -758,3 +758,38 @@ def test_citation_prepositions_word_boundary_does_not_suppress_articles() -> Non
     assert "المادة 21" in articles
     assert "المادة 183" in articles
     assert "المادة 274" in articles
+
+
+def test_dual_and_plural_nouns_at_line_end_do_not_suppress_article_headings() -> None:
+    """Plural nouns like 'المواد' and dual 'المادتين' at line end must not suppress subsequent article headings."""
+    content = (
+        "المادة 3\n"
+        "تمرين وينجح في امتحان نهاية التمرين مع مراعاة مقتضيات المادتين 5 و 6 أدناه.\n"
+        "المادة 4\n"
+        "تتولى السلطة الحكومية المكلفة بالعدل تنظيم مباراة ولوج المهنة.\n"
+        "المادة 59\n"
+        "طبقا للإجراءات المنصوص عليها في المواد 56 و 57 و 58 أعلاه.\n"
+        "المادة 60\n"
+        "يمنع على المفوض القضائي أن يمارس بنفسه أي نشاط تجاري."
+    )
+    pages = [Page(number=1, text=content)]
+    chunks = chunk_document("test_plural_doc", pages)
+    articles = [c.article for c in chunks if c.article]
+    assert articles == ["المادة 3", "المادة 4", "المادة 59", "المادة 60"]
+
+
+def test_operative_verb_on_next_line_prevents_false_postposition_citation() -> None:
+    """An article followed by a BiDi-wrapped sentence containing operative amending verbs is not a citation."""
+    content = (
+        "المادة الأولى\n"
+        "تنسخ وتعوض أحكام المادة 45 من القانون رقم 47.06.\n"
+        "المادة الثانية\n"
+        "من القانون السالف الذكر 82 تتمم على النحو التالي أحكام المادة\n"
+        ": 47.06 رقم\n"
+        "المادة الثالثة\n"
+        "يدخل هذا القانون حيز التنفيذ ابتداء من تاريخ نشره."
+    )
+    pages = [Page(number=1, text=content)]
+    chunks = chunk_document("test_operative_doc", pages)
+    articles = [c.article for c in chunks if c.article]
+    assert articles == ["المادة الأولى", "المادة الثانية", "المادة الثالثة"]

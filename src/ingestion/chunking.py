@@ -84,6 +84,30 @@ def update_path(path: list[str], word: str, heading: str) -> list[str]:
     return kept + [heading]
 
 
+OPERATIVE_ARTICLE_BODY_VERBS: tuple[str, ...] = (
+    "تتمم",
+    "تنسخ",
+    "تغير",
+    "يعاقب",
+    "يحدد",
+    "تحدد",
+    "يعفى",
+    "تعفى",
+    "يدخل",
+    "تدخل",
+    "يراد",
+    "يقصد",
+    "تتولى",
+    "يتولى",
+    "يخضع",
+    "تخضع",
+    "يمنع",
+    "تمنع",
+    "يعين",
+    "تعين",
+)
+
+
 def _is_cross_reference_citation(
     lines: list[tuple[int, str]],
     current_idx: int,
@@ -135,6 +159,10 @@ def _is_cross_reference_citation(
         next_line = lines[k][1].lstrip(" \t:：-–.،;؛")
         for post in NEXT_POSTPOSITIONS:
             if next_line.startswith(post):
+                # If the line contains an operative legal verb, it is the article body text
+                # wrapped across columns or lines, not a citation postposition.
+                if any(v in next_line for v in OPERATIVE_ARTICLE_BODY_VERBS):
+                    continue
                 # Multi-word postposition ("من هذا القانون", "وما يليه", etc.) is always a citation.
                 # Single-word adverbs ("أعلاه", "بعده", etc.) only match if isolated to prevent
                 # false positives on bidi-wrapped paragraph lines in multi-column layouts.
