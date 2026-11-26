@@ -17,12 +17,30 @@ MAX_TEXTS = 256  # per request; the clients send batches of 32 (retrieval.embed_
 BATCH_SIZE = 32
 
 
+def pick_device() -> str:
+    """``cuda`` when the container has an NVIDIA card (docker-compose.gpu.yml), else ``cpu``."""
+    import torch
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 def load_models():
-    """Load the embedding model and the re-ranker named in ``config.yaml`` (``models`` section)."""
+    """Load the embedding model and the re-ranker named in ``config.yaml`` (``models`` section).
+
+    On the graphics card, both run in half precision: half the memory, so they fit next to the
+    language model.
+    """
     names = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))["models"]
     from sentence_transformers import CrossEncoder, SentenceTransformer
 
-    return SentenceTransformer(names["embedding"]), CrossEncoder(names["reranker"])
+    device = pick_device()
+    embedder = SentenceTransformer(names["embedding"], device=device)
+    reranker = CrossEncoder(names["reranker"], device=device)
+    if device == "cuda":
+        embedder.half()
+        reranker.model.half()
+    print(f"models loaded on {device}", flush=True)
+    return embedder, reranker
 
 
 @asynccontextmanager

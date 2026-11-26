@@ -1,8 +1,21 @@
-# GPU override for the machines with an NVIDIA card (the demo machine): gives the card to Ollama.
+# GPU override for the machines with an NVIDIA card (the demo machine): gives the card to Ollama
+# (answer and narration models) and to the models service (embeddings and re-ranker).
 # Used by `make up-gpu`: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 # `make up` does not use it, so a laptop without an NVIDIA card still starts.
 # Needs up-to-date NVIDIA drivers; on Windows, Docker Desktop with the WSL2 backend; on Linux,
 # the NVIDIA container toolkit.
+#
+# The models service is built with the CUDA build of torch, as a separate image: the first
+# `make up-gpu` builds it (needs the internet, a few GB), and `make up` keeps the CPU image.
+# The RTX 50 series needs https://download.pytorch.org/whl/cu130 instead (driver 580 or newer).
 services:
   llm:
+    gpus: all
+
+  models:
+    image: rag-models-gpu
+    build:
+      context: ./services/models
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cu126
     gpus: all

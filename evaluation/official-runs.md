@@ -6,6 +6,11 @@ come from these runs. How the scores are computed: [README.md](README.md).
 Everything runs from the repository root, in a bash shell (Git Bash on Windows). Run the steps in
 order, with nothing else running on the machine: the times are only comparable then.
 
+This is the first time these steps run on the demo machine. If a command fails, a check does not
+give what is written, or a result looks wrong (every question failing, scores at 0, a run much
+slower than expected), stop and send the command and its full output. Do not change the script or
+the stack to make it work.
+
 ## 1. Prepare the machine
 
 ```
@@ -22,6 +27,13 @@ make seed
 corpus is loaded once, from the current `main`. If the stack holds something that must be kept,
 ask before running it.
 
+The first `make up-gpu` builds the GPU image of the models service (embeddings and re-ranker):
+it needs the internet and takes a few minutes. Check that it uses the card:
+
+```
+docker compose logs models | grep "loaded on"     # must say "models loaded on cuda"
+```
+
 Check that `.env` has `ADMIN_USERNAME` and `ADMIN_PASSWORD`: the script logs in with them.
 
 Then one question to load the models:
@@ -29,6 +41,15 @@ Then one question to load the models:
 ```
 python evaluation/run_eval.py run --ids p1-03 --no-grader --out evaluation/results/warmup.jsonl --machine "warm-up"
 ```
+
+Check that the language model is on the card too:
+
+```
+docker compose exec llm ollama ps                 # the PROCESSOR column must say "100% GPU"
+```
+
+If either check fails, write it down and send it with the results (see 6): the times then are not
+the GPU times.
 
 In every command below, replace `MACHINE` with the GPU, the memory and the processor, for example
 `"RTX 4060 8 GB, 32 GB RAM, i7-12700H"`.
@@ -47,8 +68,8 @@ continues where it stopped when the same command is run again.
 
 ## 3. The search settings (search only)
 
-These runs only call `POST /search`, so they are short. For each line of the table: set the value
-in `config.yaml`, restart the api, run the command.
+These runs only call `POST /search`, so they are much shorter than the full runs. For each line
+of the table: set the value in `config.yaml`, restart the api, run the command.
 
 ```
 docker compose restart api
@@ -82,10 +103,15 @@ when the stack starts, not in `config.yaml`:
 
 ```
 MODE=light docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
+python evaluation/run_eval.py run --ids p1-03 --grader-model qwen2.5:7b --out evaluation/results/warmup-light.jsonl --machine "warm-up"
+docker compose exec llm ollama ps                 # both models listed, "100% GPU"
 python evaluation/run_eval.py run --out evaluation/results/light.jsonl --grader-model qwen2.5:7b --machine "MACHINE"
 ```
 
-`--grader-model qwen2.5:7b` keeps the same grader as the other runs, so only the answers change.
+The warm-up question loads the small model and the grader, so the timed run does not include
+loading them. `--grader-model qwen2.5:7b` keeps the same grader as the other
+runs, so only the answers change. If `ollama ps` does not list both models on the card, write it
+down: the card is then too small for both, and the light times include reloading the models.
 
 Then back to the normal stack:
 
@@ -96,15 +122,16 @@ git status                      # must be clean again
 
 ## 6. What to send
 
-Zip the `evaluation/results/` folder and send it over. It should hold these ten files:
+Zip the `evaluation/results/` folder and send it over. It should hold these eleven files:
 
 ```
 baseline.jsonl  chars300.jsonl  chars500.jsonl  chars2000.jsonl  topn10.jsonl  topn20.jsonl
-iter1.jsonl     sub1.jsonl      light.jsonl     warmup.jsonl
+iter1.jsonl     sub1.jsonl      light.jsonl     warmup.jsonl    warmup-light.jsonl
 ```
 
-Add a few lines with anything unusual: an error, a run that was stopped and started again,
-something else running on the machine. Do not commit the results: the report is written from them.
+Add a few lines with anything unusual: a GPU check that failed, an error, a run that was stopped
+and started again, something else running on the machine. Do not commit the results: the report
+is written from them.
 
 Each file starts with the setup it was run with (commit, configuration, machine, GPU), so nothing
 else is needed. To look at the results before sending them:

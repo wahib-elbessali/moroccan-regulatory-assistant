@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# CPU build of torch: no CUDA libraries, so the image stays a few hundred MB instead of several GB.
-# On a GPU demo machine, install the default torch wheel instead.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+# CPU build of torch by default: no CUDA libraries, so the image stays a few hundred MB instead of
+# several GB. docker-compose.gpu.yml builds it with the CUDA build instead (TORCH_INDEX).
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir torch --index-url ${TORCH_INDEX} \
     && pip install --no-cache-dir fastapi uvicorn pyyaml "sentence-transformers>=3.0"
 
 # Models come from the hf_cache volume, mounted on /hf; nothing is ever downloaded at startup.
