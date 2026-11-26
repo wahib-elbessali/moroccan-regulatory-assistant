@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from html import escape
+from html import escape, unescape
 
 from src.core.contracts.models import Citation, Passage, WebResult
 
 _MARKER_RE = re.compile(r"\[(\d+)\]")
 _CLAIM_BOUNDARY_RE = re.compile(r"(?<!^[0-9٠-٩]\.)(?<=[.!؟?])(?=\s|$)|\r?\n+", re.MULTILINE)
-_LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|\d+[.)]|[٠-٩]+[.)])\s+")
+_LIST_NUMBER_PERIOD_RE = re.compile(r"^(\s*[0-9٠-٩]{1,3}\s*)\.(?=\s)")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-–—*•‣▪◦]|[0-9٠-٩]{1,3}\s*[-–—.)])\s+")
 _ENDING_PUNCTUATION_RE = re.compile(r"([.!؟?])([\"'’”»)]*)$")
 
 
@@ -115,7 +116,15 @@ def split_claims(text: str, valid_sources: set[int]) -> list[Claim]:
     """Split on sentence endings or line breaks and keep valid citation markers."""
     claims: list[Claim] = []
     list_sources: list[int] = []
-    for fragment in _CLAIM_BOUNDARY_RE.split(text):
+    fragments: list[str] = []
+    for line in re.split(r"\r?\n+", text):
+        protected_line = _LIST_NUMBER_PERIOD_RE.sub(
+            lambda match: match.group(1) + "\x00", line, count=1
+        )
+        fragments.extend(_CLAIM_BOUNDARY_RE.split(protected_line))
+
+    for fragment in fragments:
+        fragment = fragment.replace("\x00", ".")
         fragment = fragment.strip()
         if not fragment:
             continue
@@ -164,16 +173,24 @@ def renumber(kept: list[Claim], sources: list[Source]) -> tuple[str, list[Citati
             excerpts[source_number] = []
         if claim.excerpt not in excerpts[source_number]:
             excerpts[source_number].append(claim.excerpt)
-        output_claims.append(render_claim(claim, citation_numbers[source_number]))
+        rendered = render_claim(claim, citation_numbers[source_number])
+        if output_claims:
+            separator = "\n" if _LIST_ITEM_RE.match(claim.text) else " "
+            output_claims.append(separator + rendered)
+        else:
+            output_claims.append(rendered)
 
     citations = [
         by_number[number].citation(" … ".join(excerpts[number])) for number in citation_numbers
     ]
-    return " ".join(output_claims), citations
+    return "".join(output_claims), citations
 
 
 def checked_excerpt(excerpt: str, source_text: str, min_chars: int) -> str | None:
     """Return a verifiable excerpt copied from the source, or ``None``."""
+    excerpt = unescape(excerpt)
+    excerpt = re.sub(r"\s*[\r\n]+\s*", " ", excerpt).strip()
+    source_text = re.sub(r"\s*[\r\n]+\s*", " ", source_text).strip()
     from src.ingestion.normalize import normalize_ar  # P1 owns normalization.
 
     sentences = [part for part in _CLAIM_BOUNDARY_RE.split(excerpt) if part.strip()]

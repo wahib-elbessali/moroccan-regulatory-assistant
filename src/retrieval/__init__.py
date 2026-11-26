@@ -20,10 +20,12 @@ if TYPE_CHECKING:  # not executed at runtime, so it costs no import
 
 __all__ = ["real_retrieval"]
 
-# ``RetrievalSettings`` (P5, ``src/core/config.py``) does not define ``qdrant_url``, ``collection``
-# or ``embed_batch_size`` yet, although ``config.yaml`` carries all three under ``retrieval:``; a
-# pydantic model ignores the keys it does not declare, so they are silently dropped. These are the
-# config.yaml values, used until P5 adds the fields. P2 does not edit P5's file.
+# ``RetrievalSettings`` (P5, ``src/core/config.py``) declares only part of what ``config.yaml``
+# carries under ``retrieval:``. ``Section`` is ``extra="allow"``, so a key P5 has not declared
+# arrives as a plain attribute with no type check of its own, and a key missing from the file
+# arrives not at all — hence the ``getattr`` fallbacks below and the ``int()`` on
+# ``rerank_max_chars``. These are config.yaml's values, used when the field is absent. P2 does
+# not edit P5's file.
 DEFAULT_QDRANT_URL = "http://qdrant:6333"  # retrieval.qdrant_url
 DEFAULT_COLLECTION = "chunks"  # retrieval.collection
 DEFAULT_EMBED_BATCH_SIZE = 32  # retrieval.embed_batch_size
@@ -48,6 +50,12 @@ def real_retrieval() -> "Retrieval":
     configuration. ``collection`` and ``embed_batch_size`` fall back the same way, minus the
     environment step.
 
+    ``rerank_max_chars`` (day 8: how much of each candidate reaches the re-ranker) is read the
+    same way. ``RetrievalSettings`` does not declare it, so it arrives as an ``extra`` attribute
+    with no type check; it is coerced to ``int`` here, and ``Retrieval`` refuses anything below
+    1 — the validation a declared field would have given. Declaring it properly belongs to P5's
+    ``src/core/config.py``, which P2 does not edit.
+
     Returns:
         A ``Retrieval`` configured from ``cfg.retrieval``.
 
@@ -61,7 +69,7 @@ def real_retrieval() -> "Retrieval":
     from src.core.contracts.registry import get_models
 
     from .bm25 import BM25Index
-    from .search import Retrieval
+    from .search import DEFAULT_RERANK_MAX_CHARS, Retrieval
     from .store import QdrantStore
     from .version import VERSION_FILE, bump_version
 
@@ -99,4 +107,5 @@ def real_retrieval() -> "Retrieval":
         rrf_k=settings.rrf_k,
         top_k_final=settings.top_k_final,
         rerank_top_n=settings.rerank_top_n,
+        rerank_max_chars=int(getattr(settings, "rerank_max_chars", DEFAULT_RERANK_MAX_CHARS)),
     )
