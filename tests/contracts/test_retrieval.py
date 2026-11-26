@@ -25,7 +25,7 @@ from src.core.contracts import (
     make_chunk_id,
     make_doc_id,
 )
-from src.core.contracts.fakes.retrieval import FakeRetrieval
+from src.core.contracts.fakes.retrieval import DEFAULT_RERANK_TOP_N, FakeRetrieval
 from src.ingestion.normalize import normalize_ar
 
 # --- Local fixtures ---------------------------------------------------------------------------
@@ -58,9 +58,12 @@ PRIVATE_TEXT = "المادة 5 من الوثيقة الخاصة"
 UNSHOWN_TEXT = "المادة 6 من الوثيقة المخفية"
 DELETED_TEXT = "المادة 7 من الوثيقة المحذوفة"
 
-# top_k must stay within 1 … retrieval.rerank_top_n (20) and above the number of chunks indexed
-# here, so a visibility assertion is never truncated by the limit.
-TOP_K = 20
+# top_k must stay within 1 … retrieval.rerank_top_n and above the five chunks indexed here, so a
+# visibility assertion is never truncated by the limit. Read from the implementation's own
+# default — which mirrors config.yaml — rather than written out: day 8 lowered that value for the
+# re-ranker's latency, and a hard-coded 20 would have turned every search below into
+# ``InvalidInput`` and these visibility tests into failures about the wrong thing.
+TOP_K = DEFAULT_RERANK_TOP_N
 
 
 def _chunks(

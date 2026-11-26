@@ -726,7 +726,8 @@ retrieval:
   top_k_bm25: 30
   rrf_k: 60
   top_k_final: 10             # default top_k of search()
-  rerank_top_n: 20            # fused chunks sent to the re-ranker; also the maximum top_k
+  rerank_top_n: 16            # fused chunks sent to the re-ranker; also the maximum top_k
+  rerank_max_chars: 300       # characters of each candidate sent to the re-ranker (the Passage keeps the full text)
 agents:
   max_iterations: 3           # searches per sub-question
   max_sub_questions: 3

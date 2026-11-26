@@ -26,7 +26,7 @@ from qdrant_client import QdrantClient
 from src.core.contracts import INTERNAL_ROLES, PUBLIC_ROLES, Chunk, UserContext
 from src.ingestion import normalize_ar
 from src.retrieval.bm25 import BM25Index
-from src.retrieval.search import Retrieval
+from src.retrieval.search import DEFAULT_RERANK_TOP_N, Retrieval
 from src.retrieval.store import QdrantStore
 from src.retrieval.tokenizer import tokenize
 from src.retrieval.version import bump_version, read_version
@@ -67,7 +67,7 @@ class Pipeline:
         return self.bm25.search(TOKENS, ctx, 30)
 
     def returned(self, ctx: UserContext, query: str = QUERY) -> set[str]:
-        return {p.chunk.chunk_id for p in self.retrieval.search(query, ctx, 20)}
+        return {p.chunk.chunk_id for p in self.retrieval.search(query, ctx, DEFAULT_RERANK_TOP_N)}
 
 
 @pytest.fixture
