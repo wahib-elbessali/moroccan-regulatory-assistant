@@ -53,3 +53,16 @@ First start:
 3. `make up`, then `make seed`.
 
 The gateway publishes port 3000 (interface) and port 8000 (API) on the host; every other service stays on a network with no published port. Details of the three networks: [`docs/specs/P6-sovereignty.md`](docs/specs/P6-sovereignty.md).
+
+## Run the real application
+
+The Compose stack builds the P7 interface and configures the API to use the real Ollama, Qdrant,
+retrieval, ingestion and answer services. After creating `.env` from `.env.example` and setting
+the required secrets, run `make models` once while downloads are available, then `make up-light`.
+Open <http://localhost:3000> and sign in with the configured admin or an existing reader/editor
+account. `config.yaml` keeps its fake defaults for local tests; Compose selects real services
+without changing it.
+
+For answers grounded in the local corpus, seed the documents with
+`make seed OWNER=<existing-user-id>` and wait for ingestion to finish. Public documents are
+available to readers and editors; internal documents are available to editors only.

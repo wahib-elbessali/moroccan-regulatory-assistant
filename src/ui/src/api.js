@@ -16,17 +16,17 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    if (status === 401) {
       saveToken(null);
       window.dispatchEvent(new Event("assistant:unauthorized"));
     }
-    throw new Error(error.response?.data?.message || error.message || "Service indisponible");
+    const appError = new Error(error.response?.data?.message || error.message || "Service indisponible");
+    appError.status = status;
+    appError.code = error.response?.data?.code;
+    throw appError;
   },
 );
-
-export function isDemoMode() {
-  return import.meta.env.VITE_DEMO_MODE !== "false" ;
-}
 
 export function saveToken(token) {
   if (token) sessionStorage.setItem("assistant-token", token);
@@ -50,15 +50,26 @@ function parseSse(responseText, state, onEvent, flush = false) {
   }
 }
 
-function streamAsk(question, useWeb, onEvent) {
+async function streamAsk(question, useWeb, onEvent) {
   const state = { buffer: "", readOffset: 0 };
-  return http.post("/ask", { question, use_web: useWeb }, {
+  let receivedDone = false;
+  const dispatch = (message) => {
+    if (message.event === "done") receivedDone = true;
+    onEvent(message);
+  };
+  await http.post("/ask", { question, use_web: useWeb }, {
     responseType: "text",
+    timeout: 660_000,
     onDownloadProgress: ({ event }) => {
       const responseText = event?.target?.responseText;
-      if (typeof responseText === "string") parseSse(responseText, state, onEvent);
+      if (typeof responseText === "string") parseSse(responseText, state, dispatch);
     },
-  }).then((response) => parseSse(response.data, state, onEvent, true));
+  }).then((response) => parseSse(response.data, state, dispatch, true));
+  if (!receivedDone) {
+    const error = new Error("The answer stream ended before completion.");
+    error.code = "STREAM_INTERRUPTED";
+    throw error;
+  }
 }
 
 async function uploadDocument(file, fields) {
@@ -90,6 +101,27 @@ export const api = {
     },
   },
   ask: streamAsk,
+  conversations: {
+    async list() {
+      const { data } = await http.get("/conversations");
+      return data;
+    },
+    async create() {
+      const { data } = await http.post("/conversations", {});
+      return data;
+    },
+    async get(conversationId) {
+      const { data } = await http.get(`/conversations/${conversationId}`);
+      return data;
+    },
+    async addMessage(conversationId, question, answer) {
+      const { data } = await http.post(`/conversations/${conversationId}/messages`, { question, answer });
+      return data;
+    },
+    async remove(conversationId) {
+      await http.delete(`/conversations/${conversationId}`);
+    },
+  },
   documents: {
     async list() {
       const { data } = await http.get("/documents");
@@ -114,7 +146,7 @@ export const api = {
       return data;
     },
     async accountRequests() {
-      const { data } = await http.get("/admin/account-requests", { params: { status: "pending" } });
+      const { data } = await http.get("/admin/account-requests");
       return data;
     },
     async audit() {

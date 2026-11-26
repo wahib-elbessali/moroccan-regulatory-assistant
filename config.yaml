@@ -44,7 +44,7 @@ agents:
   min_relevant: 1             # relevant passages for a sub-question to count as answered
   max_passages_to_writer: 8
   max_question_chars: 1000
-  request_timeout_s: 60
+  request_timeout_s: 600
   confidence_unknown_below: 0.4
 answer:
   max_answer_tokens: 800
