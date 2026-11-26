@@ -15,7 +15,10 @@ from src.agents.orchestrator.prompts import (
 )
 from src.agents.orchestrator.reformulation_guard import (
     complete_sub_questions,
+    has_foreign_script,
+    is_french,
     keeps_meaning,
+    merge_needless_split,
 )
 from src.agents.orchestrator.validation import coerce_bool, parse_json_or_none
 from src.core.config import cfg
@@ -141,11 +144,12 @@ def plan_node(state: GraphState) -> dict:
     subs = []
     if data and isinstance(data.get("sub_questions"), list):
         subs = [q for q in map(_sub_question_text, data["sub_questions"]) if q and normalize_ar(q)]
+        subs = [q for q in subs if not has_foreign_script(q)]
 
     if not subs:
         subs = [state["question"]]
 
-    sub_questions = subs[: cfg.agents.max_sub_questions]
+    sub_questions = merge_needless_split(state["question"], subs)[: cfg.agents.max_sub_questions]
     # A part of the question the planner dropped is added back (organizer feedback).
     sub_questions = complete_sub_questions(
         state["question"], sub_questions, cfg.agents.max_sub_questions
@@ -178,10 +182,33 @@ def plan_node(state: GraphState) -> dict:
     }
 
 
+def merge_passages(first: list[Passage], second: list[Passage]) -> list[Passage]:
+    """Alternate two result lists, without duplicates (same chunk -> keep the higher score).
+
+    Alternating, not sorting by score: both lists then reach the grader's top results.
+    """
+    merged: dict[str, Passage] = {}
+    for i in range(max(len(first), len(second))):
+        for results in (first, second):
+            if i < len(results):
+                p = results[i]
+                cid = p.chunk.chunk_id
+                if cid not in merged or p.score > merged[cid].score:
+                    merged[cid] = p
+    return list(merged.values())
+
+
 def search_node(state: GraphState) -> dict:
     t0 = time.perf_counter()
     retrieval = get_retrieval()
     passages = retrieval.search(state["query"], state["ctx"], top_k=cfg.retrieval.top_k_final)
+    # A French question can be badly translated by the planner, so its first search also runs
+    # the question as typed. Same ctx: P2 applies the same access filter.
+    question = state["question"]
+    first_search = state["current_index"] == 0 and state["iteration"] == 1
+    if first_search and is_french(question) and state["query"] != question:
+        original = retrieval.search(question, state["ctx"], top_k=cfg.retrieval.top_k_final)
+        passages = merge_passages(original, passages)
 
     titles = list(dict.fromkeys(p.chunk.title for p in passages))
     state["emit"](
@@ -212,8 +239,13 @@ def grade_node(state: GraphState) -> dict:
         relevant = []
         tokens = 0
     else:
+        graded = state["sub_questions"][state["current_index"]]
+        # The grader also sees a French question as typed: a wrong translation must not make
+        # it reject the passages found with the original question.
+        if is_french(state["question"]) and graded != state["question"]:
+            graded = f"{state['question']}\n{graded}"
         messages = grade_messages(
-            state["sub_questions"][state["current_index"]],
+            graded,
             [p.chunk.text for p in top],
         )
         llm = get_llm()
@@ -328,6 +360,8 @@ def reformulate_node(state: GraphState) -> dict:
     except Exception:
         new_q = ""
 
+    if has_foreign_script(new_q):
+        new_q = ""
     total_tokens = state["tokens"] + tokens
     normalized_new = normalize_ar(new_q)
     # A reformulation that drops a legal term or a part of the question is rejected like a
