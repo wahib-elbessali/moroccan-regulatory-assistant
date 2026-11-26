@@ -119,7 +119,7 @@ services:
     networks: [internal]
     volumes:
       - ollama_models:/root/.ollama
-    # GPU (optional, to test on the demo machine): add `gpus: all`
+    # GPU: docker-compose.gpu.yml (`make up-gpu`)
 
   models:  # bge-m3 + bge-reranker-v2-m3 over HTTP, read from the hf_cache volume (no internet)
     build: ./services/models

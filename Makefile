@@ -13,7 +13,7 @@ up:
 up-light:
 	MODE=light docker compose up -d --wait
 
-# Same as `up`, with the NVIDIA card given to Ollama (needs the drivers, see docker-compose.gpu.yml).
+# Same as `up`, with the NVIDIA card given to Ollama and to the models service (see docker-compose.gpu.yml).
 up-gpu:
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 

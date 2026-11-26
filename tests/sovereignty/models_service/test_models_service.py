@@ -106,16 +106,60 @@ def test_rerank_requires_a_query(client):
     assert response.status_code == 422
 
 
-def test_load_models_uses_the_names_of_config_yaml(tmp_path, monkeypatch):
+class FakeModel:
+    """Stands for a SentenceTransformer, or for the inner model of a CrossEncoder."""
+
+    def __init__(self, name, device):
+        self.name, self.device, self.half_precision = name, device, False
+
+    def half(self):
+        self.half_precision = True
+        return self
+
+
+class FakeCrossEncoder:
+    def __init__(self, name, device):
+        self.model = FakeModel(name, device)
+
+
+@pytest.fixture
+def fake_models(tmp_path, monkeypatch):
     config = tmp_path / "config.yaml"
     config.write_text(
         yaml.safe_dump({"models": {"embedding": "org/embed", "reranker": "org/rerank"}}),
         encoding="utf-8",
     )
     fake = types.ModuleType("sentence_transformers")
-    fake.SentenceTransformer = lambda name: ("embedder", name)
-    fake.CrossEncoder = lambda name: ("reranker", name)
+    fake.SentenceTransformer = FakeModel
+    fake.CrossEncoder = FakeCrossEncoder
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
     monkeypatch.setattr(models_app, "CONFIG_PATH", config)
 
-    assert models_app.load_models() == (("embedder", "org/embed"), ("reranker", "org/rerank"))
+
+def test_load_models_uses_the_names_of_config_yaml(fake_models, monkeypatch):
+    monkeypatch.setattr(models_app, "pick_device", lambda: "cpu")
+    embedder, reranker = models_app.load_models()
+    assert embedder.name == "org/embed"
+    assert reranker.model.name == "org/rerank"
+
+
+def test_load_models_on_the_processor_keeps_full_precision(fake_models, monkeypatch):
+    monkeypatch.setattr(models_app, "pick_device", lambda: "cpu")
+    embedder, reranker = models_app.load_models()
+    assert (embedder.device, reranker.model.device) == ("cpu", "cpu")
+    assert not embedder.half_precision and not reranker.model.half_precision
+
+
+def test_load_models_on_the_card_uses_half_precision(fake_models, monkeypatch):
+    monkeypatch.setattr(models_app, "pick_device", lambda: "cuda")
+    embedder, reranker = models_app.load_models()
+    assert (embedder.device, reranker.model.device) == ("cuda", "cuda")
+    assert embedder.half_precision and reranker.model.half_precision
+
+
+@pytest.mark.parametrize("available, device", [(True, "cuda"), (False, "cpu")])
+def test_pick_device(available, device, monkeypatch):
+    fake = types.ModuleType("torch")
+    fake.cuda = types.SimpleNamespace(is_available=lambda: available)
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    assert models_app.pick_device() == device
