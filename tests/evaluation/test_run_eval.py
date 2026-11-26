@@ -169,8 +169,13 @@ def grades(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     return calls
 
 
-def args(no_grader: bool = False) -> argparse.Namespace:
-    return argparse.Namespace(no_grader=no_grader, compose=["docker", "compose"], grader_model=None)
+def args(no_grader: bool = False, search_only: bool = False) -> argparse.Namespace:
+    return argparse.Namespace(
+        no_grader=no_grader or search_only,
+        search_only=search_only,
+        compose=["docker", "compose"],
+        grader_model=None,
+    )
 
 
 def answered(citations: list[dict], text: str = "جواب [1].") -> dict:
@@ -250,6 +255,24 @@ def test_no_grader_option(grades: list[dict]) -> None:
     row = run_eval.evaluate(question(), api, TOKENS, DOC_FILES, args(no_grader=True))
 
     assert "grade" not in row and grades == []
+
+
+def test_search_only_option(grades: list[dict]) -> None:
+    q = question(
+        must_not_cite=[{"source_file": "internal/internal_02_personal_data.pdf", "article": "x"}]
+    )
+    results = [
+        passage(chunk(DOC_INTERNAL, "المادة 3"), 1),
+        passage(chunk(DOC_PUBLIC, "المادة 1"), 2),
+    ]
+    api = StubApi([(200, results)], answered([citation(DOC_PUBLIC, "المادة 1")]))
+
+    row = run_eval.evaluate(q, api, TOKENS, DOC_FILES, args(search_only=True))
+
+    assert api.asked == [] and grades == []  # no /ask, no grader
+    assert row["hit_rank"] == 2 and row["rr"] == 0.5
+    assert row["leaks"] == ["internal_02_personal_data.pdf"]  # still checked on the results
+    assert "status_ok" not in row and "cited_ok" not in row and "search_seconds" in row
 
 
 def test_access_question_leaks(grades: list[dict]) -> None:
@@ -495,15 +518,76 @@ def test_compare(tmp_path: Path) -> None:
     new_rows.append(result("p1-99"))  # only in the new run: left out
     new = write_results(tmp_path / "new.jsonl", new_rows, commit="new2222")
 
-    text = run_eval.compare(old, new)
+    text = run_eval.compare([old, new])
 
-    assert "(3 questions in both)" in text
+    assert "(3 questions in all of them)" in text
+    assert "| | old | new |" in text
     assert "| commit | old1111 | new2222 |" in text
     assert "| MRR | 0.42 | 0.67 |" in text
     changed = text.split("### Questions that changed")[1]
     assert "| p1-02 | cited_ok | False | True |" in changed
+    assert "| p1-02 | hit_rank | 4 | 1 |" in changed
     assert "| p1-03 | status_ok | False | True |" in changed
     assert "p1-01" not in changed and "p1-99" not in changed
+
+
+def write_variant(path: Path, rows: list[dict], max_chars: int, **setup: Any) -> Path:
+    config = {"mode": "local", "retrieval": {"rerank_top_n": 16, "rerank_max_chars": max_chars}}
+    lines = [{"kind": "setup", "git_commit": "abc1234", "config": config, **setup}, *rows]
+    path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), "utf-8")
+    return path
+
+
+def search_row(id_: str, rank: int | None, seconds: float) -> dict:
+    row = {k: v for k, v in result(id_).items() if k not in ("status", "status_ok", "seconds")}
+    row.update(hit_rank=rank, hit=rank is not None, rr=1 / rank if rank else 0.0)
+    row["search_seconds"] = seconds
+    return row
+
+
+def test_compare_several_search_only_runs(tmp_path: Path) -> None:
+    runs = [
+        write_variant(
+            tmp_path / f"chars{n}.jsonl",
+            [search_row("p1-01", 1, s), search_row("p1-02", rank, s)],
+            n,
+            search_only=True,
+        )
+        for n, rank, s in ((300, None, 2.0), (500, 3, 3.0), (2000, 3, 8.0))
+    ]
+
+    text = run_eval.compare(runs)
+
+    assert "## Comparison of 3 runs (2 questions in all of them)" in text
+    assert "| | chars300 | chars500 | chars2000 |" in text
+    # Only the settings that differ are listed.
+    assert "| retrieval.rerank_max_chars | 300 | 500 | 2000 |" in text
+    assert "rerank_top_n" not in text and "| mode |" not in text
+    assert "| hit@10 | 0.50 | 1.00 | 1.00 |" in text
+    assert "| search s | 2.0 | 3.0 | 8.0 |" in text
+    assert "| status ok | – | – | – |" in text  # no answer in a search-only run
+    changed = text.split("### Questions that changed")[1]
+    assert "| p1-02 | hit_rank | – | 3 | 3 |" in changed
+    assert "p1-01" not in changed and "status_ok" not in changed
+
+
+def test_summary_of_a_search_only_run(tmp_path: Path) -> None:
+    path = write_variant(
+        tmp_path / "s.jsonl",
+        [search_row("p1-01", 1, 2.0), search_row("p1-02", None, 2.0)],
+        300,
+        search_only=True,
+    )
+    text = run_eval.summary(path)
+    assert "search only" in text and "grader" not in text
+    to_look = text.split("### Questions to look at")[1]
+    assert "| p1-02 |" in to_look and "| p1-01 |" not in to_look
+
+
+def test_compare_needs_two_files(tmp_path: Path) -> None:
+    one = write_results(tmp_path / "one.jsonl", ROWS[:1])
+    with pytest.raises(SystemExit):
+        run_eval.main(["compare", str(one)])
 
 
 def test_read_results_skips_blank_lines(tmp_path: Path) -> None:

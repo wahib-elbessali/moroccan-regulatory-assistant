@@ -8,6 +8,7 @@ The evaluation set and the script that scores the system on it (F-EVA-01, F-EVA-
 | `build_dataset.py` | Checks the group files and builds `dataset.jsonl` |
 | `dataset.jsonl` | The evaluation set: 71 questions |
 | `run_eval.py` | Asks the questions to a running stack and scores the answers |
+| `official-runs.md` | Step by step for the runs whose figures go in the report |
 
 ## The questions
 
@@ -62,6 +63,7 @@ python evaluation/run_eval.py run --out evaluation/results/baseline.jsonl --mach
 | `--type simple access` | only these types |
 | `--ids p6-03 p6-07` | only these questions |
 | `--no-grader` | skip faithfulness and relevance (faster) |
+| `--search-only` | only `POST /search`: hit@10, MRR, search time and leaks; no answer, no grader (much faster) |
 | `--grader-model qwen2.5:7b` | grade with another model than the answer model |
 | `--compose "docker compose -p name"` | the compose command of the running stack, if not the default |
 
@@ -71,7 +73,7 @@ the first time.
 
 The results file starts with one line describing the setup (date, git commit, files changed in
 `src/` or `config.yaml`, the configuration the api runs with, mode, machine, GPU), then one line
-per question. To print the tables again, or to compare two runs:
+per question. To print the tables again, or to compare runs:
 
 ```
 python evaluation/run_eval.py summary evaluation/results/baseline.jsonl
@@ -79,7 +81,44 @@ python evaluation/run_eval.py compare evaluation/results/baseline.jsonl evaluati
 ```
 
 `summary` prints the scores overall, per type, per group and per role, and lists the questions to
-look at. `compare` prints the scores before and after, and the questions whose result changed.
+look at. `compare` takes two results files or more and prints them side by side: the settings that
+differ between the runs (read from the running api, not from the file on disk), the scores, and
+the questions whose status, search rank or citation changed. Only the questions present in every
+run are counted.
+
+## Ablation study
+
+Each run changes one setting of `config.yaml` and keeps everything else, so the difference in the
+scores is what that setting brings. The api reads `config.yaml` when it starts:
+
+1. change the value in `config.yaml`;
+2. `docker compose restart api` and wait until it is healthy;
+3. run the evaluation with its own `--out`;
+4. put `config.yaml` back (`git checkout -- config.yaml`) once all the runs are done.
+
+The settings that change only the search are run with `--search-only`; the others need the full
+run. `config.yaml`'s current values are the baseline.
+
+| Setting | Values | What it shows | Run |
+|---|---|---|---|
+| `retrieval.rerank_max_chars` | 300, 500, 2000 (whole article) | how much of each passage the re-ranker needs to read | `--search-only` |
+| `retrieval.rerank_top_n` | 10, 16, 20 | how many fused passages are worth re-ranking | `--search-only` |
+| `agents.max_iterations` | 1 (no reformulation), 3 | what reformulation brings | full |
+| `agents.max_sub_questions` | 1 (no splitting), 3 | what splitting the question brings, on the multi-part questions | full |
+| `mode` | `local` (7B), `light` (3B) | the cost of the smaller model | full |
+
+Example for the re-ranker input:
+
+```
+python evaluation/run_eval.py run --search-only --out evaluation/results/chars300.jsonl --machine "..."
+python evaluation/run_eval.py run --search-only --out evaluation/results/chars500.jsonl --machine "..."
+python evaluation/run_eval.py run --search-only --out evaluation/results/chars2000.jsonl --machine "..."
+python evaluation/run_eval.py compare evaluation/results/chars300.jsonl evaluation/results/chars500.jsonl evaluation/results/chars2000.jsonl
+```
+
+All the runs of one study are made on the same machine, one after the other, with nothing else
+running: the times are only comparable then. `mode` is set by `make up` / `make up-light`, not by
+`config.yaml`.
 
 ## How each question is scored
 
@@ -96,6 +135,7 @@ Everything goes through the HTTP API, as a real user would, with the token of th
 | `relevant` | grader, 0 / 0.5 / 1: the answer gives the facts of the reference answer and contradicts none |
 | `leaks` | questions where a `must_not_cite` file appears in the search results or in the citations; must be 0 |
 | `errors` | questions where `/search` or `/ask` failed |
+| `search s` | median time of `POST /search`, in seconds |
 | `s mean`, `s median` | time of the whole `/ask` answer, in seconds |
 
 **Matching a source.** A search result or a citation matches an expected source when its file is
@@ -120,12 +160,12 @@ scores are for comparing runs on the same machine, not absolute values.
 
 ## Notes for running on other machines
 
-- **Without a GPU**, one search takes more than 60 seconds (the re-ranker runs on the processor),
-  which is the gateway's default timeout for every route except `/ask`, so searches fail with 504.
-  On such a machine add `proxy_read_timeout 600s;` to the `location /` block of the 8000 server in
-  `services/gateway/default.conf`, locally only, and restart the gateway. An answer then takes
-  several minutes, so run a few questions with `--ids` or `--group`, not the whole set.
+- **Without a GPU**, the re-ranker runs on the processor: one search takes about 10 to 30 seconds
+  and an answer several minutes, so run a few questions with `--ids` or `--group`, not the whole
+  set. If searches fail with 504 (the gateway gives every route except `/ask` 60 seconds), add
+  `proxy_read_timeout 600s;` to the `location /` block of the 8000 server in
+  `services/gateway/default.conf`, locally only, and restart the gateway.
 - **The first question after the stack starts is slow** (models loading). For timing, ask one
   question before the run.
 - The official runs, whose figures go in the report, are made on the demo machine with the corpus
-  loaded once from the current `main`.
+  loaded once from the current `main`: [official-runs.md](official-runs.md).
