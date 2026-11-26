@@ -220,8 +220,10 @@ class ScriptedP4LLM(RoleLLM):
                     {"claim": int(number), "supported": True, "source": source, "excerpt": excerpt}
                 )
             return json.dumps({"verdicts": verdicts}, ensure_ascii=False)
-        if "<source" in user:  # P4 writer
-            return "تنص الوثيقة على ما يلي [1]."
+        if "<source" in user:  # P4 writer: one sentence of the first source, cited
+            texts = {int(n): unescape(t) for n, t in _SOURCE.findall(user)}
+            sentences = [x.strip() for x in _SENTENCE.split(texts[1]) if x.strip()]
+            return f"{max(sentences, key=len).rstrip('.')} [1]."
         return super().chat(messages, model=model, max_tokens=max_tokens, temperature=temperature)
 
 
