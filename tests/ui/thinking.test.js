@@ -1,13 +1,12 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-import { appendThinkingFragment, emptyThinking } from "../src/app/thinking.js";
+import { expect, test } from "vitest";
+import { appendThinkingFragment, emptyThinking } from "../../src/ui/src/app/thinking.js";
 
 test("appends streaming fragments to the current thinking line", () => {
   let thinking = emptyThinking();
   thinking = appendThinkingFragment(thinking, "Searching ");
   thinking = appendThinkingFragment(thinking, "the corpus");
 
-  assert.deepEqual(thinking, { lines: [], current: "Searching the corpus" });
+  expect(thinking).toEqual({ lines: [], current: "Searching the corpus" });
 });
 
 test("starts a new thinking line only when a newline fragment arrives", () => {
@@ -17,11 +16,11 @@ test("starts a new thinking line only when a newline fragment arrives", () => {
   thinking = appendThinkingFragment(thinking, "Second");
   thinking = appendThinkingFragment(thinking, " part");
 
-  assert.deepEqual(thinking, { lines: ["First step"], current: "Second part" });
+  expect(thinking).toEqual({ lines: ["First step"], current: "Second part" });
 });
 
 test("handles multiple newline separators in one fragment", () => {
   const thinking = appendThinkingFragment(emptyThinking(), "First\nSecond\n");
 
-  assert.deepEqual(thinking, { lines: ["First", "Second"], current: "" });
+  expect(thinking).toEqual({ lines: ["First", "Second"], current: "" });
 });
