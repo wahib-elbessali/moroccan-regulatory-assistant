@@ -50,7 +50,7 @@ The internet is off for the whole demo, except the last step (cloud comparison).
 | 9 | Reader | Ask the two questions of the table [Questions that must get "I don't know"](#questions-that-must-get-i-dont-know). | Both answers are exactly « لم أجد هذه المعلومة في الوثائق المتاحة لك. », with no citation. |
 | 10 | Reader | Reload the page, open « Historique » / « سجل المحادثات » and reopen the conversation. | Questions, answers and citations are back. Nothing is asked again. |
 | 11 | Administrator | Sign in as administrator. In « Recherche web » / « البحث في الويب », turn web search off for `Lecteur` and save. | One switch per role; the `Lecteur` switch is off. |
-| 12 | Reader | Sign in again as `demo_lecteur` and ask question 3. | The « Recherche web » switch is gone from the chat. The answer comes from the documents only. |
+| 12 | Reader | Sign in again as `demo_lecteur` and ask question 2. | The « Recherche web » switch is gone from the chat. The answer comes from the documents only. |
 | 13 | Administrator | Open « Droits documentaires » / « صلاحيات الوثائق », set `adala_013.pdf` from `Public` to `Interne`, then back to `Public`. Open « Journal d'audit » / « سجل التدقيق ». | Both changes are in the audit log, shown as plain text. Use only `adala_013.pdf`: the documents of the demo questions must stay as they are. |
 | 14 | Reader | Open « Documents », click « Supprimer » on the private PDF and confirm. | The confirmation is in the page, not a browser dialog. The document leaves the list. |
 | 15 | Presenter | Click « Déconnexion » / « تسجيل الخروج ». | Login screen; nothing of the previous session is left on screen. |
@@ -60,16 +60,15 @@ The internet is off for the whole demo, except the last step (cloud comparison).
 | No. | Id | Question | The answer must say |
 |---:|---|---|---|
 | 1 | p1-01 | من يعتبر مغربيا عن طريق النسب أو البنوة وفقا لقانون الجنسية المغربية؟ | the child born of a Moroccan father or a Moroccan mother (الفصل 6, nationality code) |
-| 2 | p1-02 | ما هي الوضعية القانونية لجنسية الطفل المولود في المغرب من أبوين مجهولين؟ | the child born in Morocco of unknown parents is Moroccan (الفصل 7) |
-| 3 | p1-05 | ممن يتكون مجلس العائلة وفقا لأحكام المرسوم رقم 2.04.88؟ | the judge as president, the father and mother (or guardian), and four members from the relatives (المادة الأولى) |
-| 4 | p1-07 | كيف يحدد عدد المفوضين القضائيين بدوائر نفوذ المحاكم الابتدائية وفق القانون رقم 46.21؟ | by a decision of the government authority in charge of justice, after consulting the judicial council, the public prosecution and the national body of judicial officers (المادة 11) |
-| 5 | p2-06 | ما هو المصدر الرسمي الوحيد لرسوم الحالة المدنية ومستخرجاتها، وأين يمسك؟ | the national civil status register, kept on the central platform of the Ministry of the Interior (المادة 14, law 36.21) |
-| 6 | p2-12 | شحال من يوم عند مؤسسة الرعاية الاجتماعية باش تصرح بأي تغيير وقع فـ العناصر اللي تمنحت على أساسها الرخصة؟ | eight days from the change (المادة 17, law 65.15). The question is in Darija; the answer must be in Modern Standard Arabic. |
-| 7 | p3-03 | كيف تتكون اللجنة المكلفة بالبحث المنصوص عليها في المادة 16 من القانون رقم 15.01 المتعلق بكفالة الأطفال المهملين؟ | the King's prosecutor (president), the endowments inspector, the local authority and a social worker (المادة الأولى) |
-| 8 | p6-03 | ما هو المبلغ الشهري للدعم المباشر المخصص للنساء الأرامل في وضعية هشة عن كل طفل يتيم؟ | 350 dirhams per orphan child (المادة 11) |
-| 9 | p6-05 | ما هو الأجل الذي يجب أن تبت فيه اللجنة الإقليمية الدائمة في طلبات الدعم المباشر للنساء الأرامل في وضعية هشة؟ | 30 days at most from receiving the request (المادة 7) |
-| 10 | p6-06 | كيف يؤدى الدعم المباشر للأرملة المستفيدة؟ | paid into an account opened by the widow at the postal bank near her home, or by any direct means chosen by the competent body (المادة 13) |
-| 11 | p6-10 | ما هو المرسوم الذي نسخه المرسوم رقم 2.04.88 بشأن تكوين مجلس العائلة وتحديد مهامه؟ | decree 2.94.31 of 26 December 1994 (المادة التاسعة) |
+| 2 | p1-05 | ممن يتكون مجلس العائلة وفقا لأحكام المرسوم رقم 2.04.88؟ | the judge as president, the father and mother (or guardian), and four members from the relatives (المادة الأولى) |
+| 3 | p1-07 | كيف يحدد عدد المفوضين القضائيين بدوائر نفوذ المحاكم الابتدائية وفق القانون رقم 46.21؟ | by a decision of the government authority in charge of justice, after consulting the judicial council, the public prosecution and the national body of judicial officers (المادة 11) |
+| 4 | p2-06 | ما هو المصدر الرسمي الوحيد لرسوم الحالة المدنية ومستخرجاتها، وأين يمسك؟ | the national civil status register, kept on the central platform of the Ministry of the Interior (المادة 14, law 36.21) |
+| 5 | p2-12 | شحال من يوم عند مؤسسة الرعاية الاجتماعية باش تصرح بأي تغيير وقع فـ العناصر اللي تمنحت على أساسها الرخصة؟ | eight days from the change (المادة 17, law 65.15). The question is in Darija; the answer must be in Modern Standard Arabic. |
+| 6 | p3-03 | كيف تتكون اللجنة المكلفة بالبحث المنصوص عليها في المادة 16 من القانون رقم 15.01 المتعلق بكفالة الأطفال المهملين؟ | the King's prosecutor (president), the endowments inspector, the local authority and a social worker (المادة الأولى) |
+| 7 | p6-03 | ما هو المبلغ الشهري للدعم المباشر المخصص للنساء الأرامل في وضعية هشة عن كل طفل يتيم؟ | 350 dirhams per orphan child (المادة 11) |
+| 8 | p6-05 | ما هو الأجل الذي يجب أن تبت فيه اللجنة الإقليمية الدائمة في طلبات الدعم المباشر للنساء الأرامل في وضعية هشة؟ | 30 days at most from receiving the request (المادة 7) |
+| 9 | p6-06 | كيف يؤدى الدعم المباشر للأرملة المستفيدة؟ | paid into an account opened by the widow at the postal bank near her home, or by any direct means chosen by the competent body (المادة 13) |
+| 10 | p6-10 | ما هو المرسوم الذي نسخه المرسوم رقم 2.04.88 بشأن تكوين مجلس العائلة وتحديد مهامه؟ | decree 2.94.31 of 26 December 1994 (المادة التاسعة) |
 
 ### Questions that must get "I don't know"
 
@@ -87,7 +86,7 @@ missing or hidden.
 |---:|---|---|---|
 | 1 | New editor | Request an account for `demo_editeur`, as in step 2 of the reader part. | « Votre demande a été envoyée. Un administrateur l'examinera. » |
 | 2 | Administrator | Approve the request with the `Éditeur` / `محرر` role. | `demo_editeur` appears under « Utilisateurs » with the editor role. |
-| 3 | Editor | Sign in as `demo_editeur` and ask p1-11 again (the internal-document question of the reader part). | This time an answer, citing the internal draft law on AI governance: the supporting documents are kept for at least three years. Same question, different role, different result: access control works inside the search. |
+| 3 | Editor | Sign in as `demo_editeur` and ask p1-11 again (the internal-document question of the reader part). | This time an answer, citing the internal draft law on AI governance. The draft repeats this sentence in several articles with three, five or seven years, so the answer is right when the number matches the article it cites (for example five years, المادة 14). Same question, different role, different result: access control works inside the search. |
 | 4 | Editor | Ask p2-05: كم مرة تنعقد اجتماعات لجنة المراقبة في السنة، وما هو أجل توجيه الاستدعاءات إلى أعضائها؟ | Twice a year, and the invitations are sent at least 15 days before the meeting (المادة 8, decree 2.19.693). |
 | 5 | Editor | Open « Documents » and click « Ajouter un document ». | The form offers « Public » and « Interne » visibility. A reader's form offers neither. |
 
@@ -104,7 +103,7 @@ The only step with the internet on, shown apart from the rest.
 | No. | User | Action | Expected on screen |
 |---:|---|---|---|
 | 1 | Presenter | Turn the internet on and switch the stack to cloud mode. | The same interface, the same accounts and the same documents. |
-| 2 | Reader | Ask reader questions 3 and 7, then a question that got "I don't know" in `light` mode while search had found the right article. | Fuller answers, with the same citations and the same checks. The difference comes from the larger model, not from the design. |
+| 2 | Reader | Ask reader questions 2 and 6, then a question that got "I don't know" in `light` mode while search had found the right article. | Fuller answers, with the same citations and the same checks. The difference comes from the larger model, not from the design. |
 | 3 | Presenter | Switch back to `light` mode and turn the internet off. | Back to the offline system. |
 
 ## If a step fails
