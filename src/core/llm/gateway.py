@@ -33,9 +33,7 @@ class GatewayClient:
 
         self.base_url = base_url
         self.timeout_s = timeout_s
-        self.client = client or httpx.Client(
-            base_url=base_url, timeout=timeout_s
-        )
+        self.client = client or httpx.Client(base_url=base_url, timeout=timeout_s)
         self.async_client = async_client
 
     def chat(
@@ -93,9 +91,7 @@ class GatewayClient:
             base_url=self.base_url, timeout=self.timeout_s
         )
         try:
-            async with client.stream(
-                "POST", "/v1/chat/completions", json=body
-            ) as response:
+            async with client.stream("POST", "/v1/chat/completions", json=body) as response:
                 self._check(response.status_code)
                 completed = False
                 async for line in response.aiter_lines():

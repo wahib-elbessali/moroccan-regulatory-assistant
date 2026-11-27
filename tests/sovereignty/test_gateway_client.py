@@ -40,9 +40,7 @@ def _client(
     transport = httpx.MockTransport(handler)  # type: ignore[arg-type]
     return gateway.GatewayClient(
         client=httpx.Client(base_url="http://cloud-gateway:8000", transport=transport),
-        async_client=httpx.AsyncClient(
-            base_url="http://cloud-gateway:8000", transport=transport
-        ),
+        async_client=httpx.AsyncClient(base_url="http://cloud-gateway:8000", transport=transport),
     )
 
 
@@ -93,9 +91,7 @@ def test_chat_sends_openai_compatible_request(
 
 
 @pytest.mark.parametrize("status", [400, 404, 429, 500, 503])
-def test_chat_http_error_is_service_error(
-    monkeypatch: pytest.MonkeyPatch, status: int
-) -> None:
+def test_chat_http_error_is_service_error(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
     client = _client(
         monkeypatch,
         Recorder(httpx.Response(status, json={"error": "provider error"})),

@@ -5,12 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 # Load services/cloud-gateway/app.py despite the hyphen in its directory name.
-APP_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "services"
-    / "cloud-gateway"
-    / "app.py"
-)
+APP_PATH = Path(__file__).resolve().parents[2] / "services" / "cloud-gateway" / "app.py"
 SPEC = importlib.util.spec_from_file_location("cloud_gateway_app", APP_PATH)
 gateway = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(gateway)
@@ -53,11 +48,7 @@ def test_chat_forwards_request_and_enforces_configured_model(monkeypatch):
 
         return httpx.Response(
             200,
-            json={
-                "choices": [
-                    {"message": {"content": "Réponse simulée"}}
-                ]
-            },
+            json={"choices": [{"message": {"content": "Réponse simulée"}}]},
         )
 
     install_transport(monkeypatch, handler)
@@ -103,6 +94,7 @@ class FakeSSEStream(httpx.AsyncByteStream):
 
     async def aclose(self):
         pass
+
 
 def test_stream_forwards_server_sent_events(monkeypatch):
     configure_provider(monkeypatch)
@@ -182,4 +174,3 @@ def test_count_tokens_rejects_non_gemini_provider(monkeypatch):
     )
 
     assert response.status_code == 501
-

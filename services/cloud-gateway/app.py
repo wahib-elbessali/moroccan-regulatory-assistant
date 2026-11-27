@@ -108,6 +108,7 @@ async def chat_completions(payload: dict[str, Any]):
     except ValueError as err:
         raise HTTPException(status_code=502, detail="Invalid provider response") from err
 
+
 @app.post("/count_tokens")
 async def count_tokens(payload: dict[str, Any]) -> dict[str, int]:
     base_url, api_key, model = provider_config()
