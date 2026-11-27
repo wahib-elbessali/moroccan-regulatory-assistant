@@ -4,10 +4,8 @@ import {
   ShieldCheck, Sparkles, X,
 } from "lucide-react";
 import { api } from "../api.js";
+import { copy, MAX_QUESTION_CHARS } from "../app/data.js";
 import { appendThinkingFragment, emptyThinking } from "../app/thinking.js";
-
-const MAX_QUESTION_CHARS = 1000;
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function CitationText({ text, citations, onCitation }) {
   const parts = text.split(/(\[\d+\])/g);
@@ -19,7 +17,10 @@ function CitationText({ text, citations, onCitation }) {
   })}</>;
 }
 
-export default function ChatView({ lang, t, demo, webEnabled, messages, setMessages, busy, setBusy }) {
+export default function ChatView({
+  lang, t, webEnabled, messages, setMessages, busy, setBusy,
+  conversationId, onConversationCreated, onMessageSaved, onPersistenceError,
+}) {
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
   const [selectedCitation, setSelectedCitation] = useState(null);
@@ -33,7 +34,7 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
   async function submit(event) {
     event.preventDefault();
     const clean = question.trim();
-    if (!clean || clean.length > MAX_QUESTION_CHARS) return setError(t.questionLimit);
+    if (!clean || clean.length > MAX_QUESTION_CHARS) return setError(t.questionLimit.replace("{max}", String(MAX_QUESTION_CHARS)));
     setError(""); setQuestion(""); setBusy(true);
     const id = crypto.randomUUID();
     setMessages((items) => [...items, { id, question: clean, thinking: emptyThinking(), answer: null, status: "working" }]);
@@ -41,31 +42,39 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
     const setAnswer = (answer) => setMessages((items) => items.map((item) => item.id === id ? { ...item, answer, status: "done" } : item));
 
     try {
-      if (demo) {
-        const fragments = lang === "ar"
-          ? ["تحليل السؤال وتحديد موضوعه القانوني…", "البحث في الوثائق المتاحة لحسابك…", "التحقق من الإحالة والنص المرتبط…"]
-          : ["Analyse de la question et de son sujet juridique…", "Recherche dans les documents accessibles…", "Vérification de la référence et du passage…"];
-        for (const fragment of fragments) {
-          await pause(480);
-          addThinking(`${fragment}\n`);
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const conversation = await api.conversations.create();
+        activeConversationId = conversation.conversation_id || conversation.id;
+        if (!activeConversationId) throw new Error("La création de la conversation n'a pas renvoyé d'identifiant.");
+        onConversationCreated(conversation);
+      }
+      let answer;
+      await api.ask(clean, webEnabled, ({ event, data }) => {
+        if (event === "thinking") addThinking(data.text);
+        if (event === "answer") {
+          answer = data;
+          setAnswer(data);
         }
-        const answer = lang === "ar"
-          ? { status: "answered", text: "تحدد الدورية أجل معالجة الطلبات في ثلاثين يومًا [1] ابتداءً من تاريخ إيداع الملف الكامل.", confidence: 0.86, language: "ar", citations: [{ doc_id: "doc-public-12", url: null, title: "دورية رقم 12 لسنة 2025", article: "المادة 2", page: 1, source: "الجريدة الرسمية عدد 7281", date: "2025-03-12", excerpt: "يتعين على المصالح المختصة معالجة الطلبات داخل أجل ثلاثين يومًا." }] }
-          : { status: "answered", text: "La circulaire fixe le délai de traitement des demandes à trente jours [1] à compter du dépôt d’un dossier complet.", confidence: 0.86, language: "fr", citations: [{ doc_id: "doc-public-12", url: null, title: "Circulaire n° 12 de 2025", article: "Article 2", page: 1, source: "Bulletin officiel n° 7281", date: "2025-03-12", excerpt: "Les services compétents traitent les demandes dans un délai de trente jours." }] };
-        setAnswer(answer);
-      } else {
-        await api.ask(clean, webEnabled, ({ event, data }) => {
-          if (event === "thinking") addThinking(data.text);
-          if (event === "answer") setAnswer(data);
-          if (event === "error") setAnswer({ status: "error", text: data.message });
-        });
+        if (event === "error") {
+          answer = null;
+          setAnswer({ status: "error", text: data.message });
+        }
+      });
+      if (answer) {
+        try {
+          await api.conversations.addMessage(activeConversationId, clean, answer);
+          await onMessageSaved();
+        } catch (reason) {
+          onPersistenceError(reason.message || t.unavailable);
+        }
       }
     } catch (reason) {
-      setAnswer({ status: "error", text: reason.message || t.unavailable });
+      setAnswer({ status: "error", text: reason.code === "STREAM_INTERRUPTED" ? t.interrupted : reason.message || t.unavailable });
     } finally { setBusy(false); }
   }
 
-  return <div className="mx-auto flex min-h-[calc(100vh-68px)] w-full max-w-[980px] flex-col px-4 pb-5 pt-6 md:px-8">
+  return <div className="mx-auto flex min-h-[calc(100vh-112px)] w-full max-w-[980px] flex-col px-4 pb-5 pt-6 md:px-8">
     {messages.length === 0 ? <div className="my-auto pb-16 pt-10 text-center rise-in">
       <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-xl border border-[#dce4d9] bg-[#e9eee7] text-[#245c48]"><BookOpen size={25} /></div>
       <span className="text-xs font-bold uppercase tracking-[.14em] text-[#b76940]">المعرفة القانونية · LE DROIT MAROCAIN</span>
@@ -78,15 +87,23 @@ export default function ChatView({ lang, t, demo, webEnabled, messages, setMessa
       {messages.map((item) => <article key={item.id} className="grid gap-4 fade-in">
         <div className="flex justify-end"><div dir="auto" className="max-w-[85%] rounded-2xl rounded-br-sm bg-[#e6ebe2] px-4 py-3 text-[15px] leading-7 text-[#29382c]">{item.question}</div></div>
         <div className="flex items-start gap-3"><span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#245c48] text-white"><Sparkles size={15} /></span><div className="min-w-0 flex-1 pt-1">
-          <details open={item.status === "working" || thinkingOpen[item.id] === true} onToggle={(event) => { const isOpen = event.currentTarget.open; setThinkingOpen((value) => ({ ...value, [item.id]: isOpen })); }} className="mb-3 max-w-2xl rounded-md border border-[#e3e3da] bg-[#fbfaf6]">
+          {item.thinking && <details open={item.status === "working" || thinkingOpen[item.id] === true} onToggle={(event) => { const isOpen = event.currentTarget.open; setThinkingOpen((value) => ({ ...value, [item.id]: isOpen })); }} className="mb-3 max-w-2xl rounded-md border border-[#e3e3da] bg-[#fbfaf6]">
             <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-semibold text-[#646b60]"><Activity size={14} className={item.status === "working" ? "animate-pulse text-[#b76940]" : "text-[#789078]"} />{t.thinking}<ChevronDown size={14} className="ms-auto" /></summary>
             <div className="grid gap-2 border-t border-[#e3e3da] px-3 py-3">{[...item.thinking.lines, item.thinking.current].filter((line) => line.length > 0).map((line, index) => <p key={index} dir="auto" className="flex items-start gap-2 text-xs leading-5 text-[#777b70]"><Check size={13} className="mt-0.5 shrink-0 text-[#6b906b]" />{line}</p>)}{item.status === "working" && <span className="h-1 w-12 animate-pulse rounded bg-[#d2b69a]" />}</div>
-          </details>
-          {!item.answer ? <div className="flex items-center gap-2 py-2 text-sm text-[#777b70]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#b76940]" />{lang === "ar" ? "جارٍ إعداد الإجابة…" : "Préparation de la réponse…"}</div> : item.answer.status === "unknown" ? <p dir="auto" className={`max-w-3xl text-[15px] leading-8 text-[#30382e] ${lang === "ar" ? "arabic" : ""}`}>{item.answer.text}</p> : item.answer.status === "error" ? <p role="alert" dir="auto" className="rounded-md bg-[#f8e9e5] px-3 py-2 text-sm text-[#9b4435]">{item.answer.text}</p> : <div className="max-w-3xl">
-            {item.answer.citations?.some((citation) => citation.url) && <div className="mb-3 border-s-2 border-[#c56e3d] bg-[#f6eee7] px-3 py-2 text-xs font-semibold text-[#885232]">{lang === "ar" ? "تتضمن هذه الإجابة مصادر من الويب." : "Cette réponse comprend des sources web."}</div>}
-            <p dir="auto" className={`text-[15px] leading-8 text-[#30382e] ${lang === "ar" ? "arabic" : ""}`}><CitationText text={item.answer.text} citations={item.answer.citations || []} onCitation={setSelectedCitation} /></p>
-            {item.answer.citations?.length > 0 && <div className="mt-5 border-t border-[#e3e3da] pt-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-[.1em] text-[#777b70]">{t.sources} · {item.answer.citations.length}</h3><div className="grid gap-2">{item.answer.citations.map((citation, index) => <button key={index} onClick={() => setSelectedCitation(citation)} className="focus-ring flex items-center gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] p-3 text-start hover:bg-white"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6ebe2] text-xs font-bold text-[#245c48]"><bdi>{index + 1}</bdi></span><span className="min-w-0"><span dir="auto" className="block truncate text-sm font-semibold text-[#3a4137]">{citation.title}</span><span dir="auto" className="mt-1 block text-xs text-[#777b70]">{[citation.article, citation.page && `${lang === "ar" ? "ص" : "p."} ${citation.page}`, citation.source].filter(Boolean).join(" · ")}</span></span><ChevronLeft size={16} className="ms-auto shrink-0 text-[#8b9085]" /></button>)}</div></div>}
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#777b70]"><span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#6b906b]" />{t.verify}</span>{item.answer.status === "answered" && <span>{t.confidence}: <bdi>{Math.round((item.answer.confidence || 0) * 100)}%</bdi></span>}</div>
+          </details>}
+          {item.status === "unavailable" ? <p dir="auto" className={`max-w-3xl text-sm leading-7 text-[#777b70] ${item.language === "ar" ? "arabic" : ""}`}>{item.language === "ar" ? t.unavailableAnswerAr : t.unavailableAnswer}</p> : !item.answer ? <div className="flex items-center gap-2 py-2 text-sm text-[#777b70]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#b76940]" />{lang === "ar" ? "جارٍ إعداد الإجابة…" : "Préparation de la réponse…"}</div> : item.answer.status === "unknown" ? <p dir="auto" className={`max-w-3xl text-[15px] leading-8 text-[#30382e] ${item.answer.language === "ar" ? "arabic" : ""}`}>{item.answer.text}</p> : item.answer.status === "error" ? <p role="alert" dir="auto" className="rounded-md bg-[#f8e9e5] px-3 py-2 text-sm text-[#9b4435]">{item.answer.text}</p> : <div className="max-w-3xl">
+            {(() => {
+              const citations = item.answer.citations || [];
+              const hasWebCitation = citations.some((citation) => citation.url);
+              const [firstLine, ...remainingLines] = item.answer.text.split("\n");
+              const hasWebNotice = hasWebCitation && remainingLines.length > 0;
+              return <>
+                {hasWebNotice && <div dir="auto" className="mb-3 border-s-2 border-[#c56e3d] bg-[#f6eee7] px-3 py-2 text-xs font-semibold text-[#885232]">{firstLine}</div>}
+                <p dir="auto" className={`text-[15px] leading-8 text-[#30382e] ${item.answer.language === "ar" ? "arabic" : ""}`}><CitationText text={hasWebNotice ? remainingLines.join("\n") : item.answer.text} citations={citations} onCitation={setSelectedCitation} /></p>
+                {citations.length > 0 && <div className="mt-5 border-t border-[#e3e3da] pt-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-[.1em] text-[#777b70]">{t.sources} · {citations.length}</h3><div className="grid gap-2">{citations.map((citation, index) => <button key={index} onClick={() => setSelectedCitation(citation)} className="focus-ring flex items-center gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] p-3 text-start hover:bg-white"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6ebe2] text-xs font-bold text-[#245c48]"><bdi>{index + 1}</bdi></span><span className="min-w-0"><span dir="auto" className="block truncate text-sm font-semibold text-[#3a4137]">{citation.title}</span><span dir="auto" className="mt-1 block text-xs text-[#777b70]">{[citation.article, citation.page && `${item.answer.language === "ar" ? "ص" : "p."} ${citation.page}`, citation.source].filter(Boolean).join(" · ")}</span>{citation.url && <span className="mt-1 inline-block rounded bg-[#f6eee7] px-1.5 py-0.5 text-[10px] font-semibold text-[#885232]">{t.webSource}</span>}</span><ChevronLeft size={16} className="ms-auto shrink-0 text-[#8b9085]" /></button>)}</div></div>}
+              </>;
+            })()}
+            {item.answer.status === "answered" && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#777b70]"><span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#6b906b]" />{copy[item.answer.language === "ar" ? "ar" : "fr"].verify}</span><span>{t.confidence}: <bdi>{Math.round((item.answer.confidence || 0) * 100)}%</bdi></span></div>}
           </div>}
         </div></div>
       </article>)}<div ref={bottomRef} />

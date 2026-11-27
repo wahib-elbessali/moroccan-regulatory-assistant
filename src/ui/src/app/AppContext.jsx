@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { api, isDemoMode, saveToken } from "../api.js";
+import { api, getToken, saveToken } from "../api.js";
 import { copy, initialDocs } from "./data.js";
 
 const AppContext = createContext(null);
@@ -7,13 +7,13 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [lang, setLang] = useState("ar");
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [error, setError] = useState("");
   const [webEnabled, setWebEnabledState] = useState(() => localStorage.getItem("assistant-web-enabled") !== "false");
   const [webAvailable, setWebAvailable] = useState(true);
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState(initialDocs);
-  const demo = isDemoMode();
 
   function setWebEnabled(enabled) {
     localStorage.setItem("assistant-web-enabled", String(enabled));
@@ -30,25 +30,49 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("assistant:unauthorized", handleUnauthorized);
   }, [lang]);
 
+  useEffect(() => {
+    let active = true;
+    async function restoreSession() {
+      if (!getToken()) {
+        setAuthLoading(false);
+        return;
+      }
+      try {
+        const profile = await api.auth.me();
+        if (!active) return;
+        setUser(profile);
+        setWebAvailable(profile.web_available);
+        setWebEnabledState(profile.web_available && localStorage.getItem("assistant-web-enabled") !== "false");
+        try {
+          const documents = await api.documents.list();
+          if (active) setDocs(documents);
+        } catch (reason) {
+          if (active) setError(reason.message);
+        }
+      } catch (reason) {
+        if (active && reason.status !== 401) setError(reason.message);
+      } finally {
+        if (active) setAuthLoading(false);
+      }
+    }
+    restoreSession();
+    return () => { active = false; };
+  }, []);
+
   async function login(username, password) {
     const profile = await api.auth.login(username, password);
     setUser(profile);
     setWebAvailable(profile.web_available);
-    setWebEnabled(profile.web_available);
+    setWebEnabledState(profile.web_available && localStorage.getItem("assistant-web-enabled") !== "false");
     setError("");
     setMessages([]);
-    const documents = await api.documents.list().catch(() => []);
-    setDocs(documents);
+    try {
+      setDocs(await api.documents.list());
+    } catch (reason) {
+      setDocs([]);
+      setError(reason.message);
+    }
     return profile;
-  }
-
-  function startDemo(role) {
-    setUser({ user_id: `demo-${role}`, username: "demo@local", role, web_enabled: true, request_id: crypto.randomUUID() });
-    setWebAvailable(role !== "admin");
-    setWebEnabled(true);
-    setMessages([]);
-    setError("");
-    setDocs(initialDocs);
   }
 
   function logout() {
@@ -59,9 +83,9 @@ export function AppProvider({ children }) {
   }
 
   const value = useMemo(() => ({
-    lang, setLang, user, error, setError, webEnabled, setWebEnabled, webAvailable,
-    messages, setMessages, busy, setBusy, docs, setDocs, demo, login, startDemo, logout,
-  }), [lang, user, error, webEnabled, webAvailable, messages, busy, docs, demo]);
+    lang, setLang, user, authLoading, error, setError, webEnabled, setWebEnabled, webAvailable,
+    messages, setMessages, busy, setBusy, docs, setDocs, login, logout,
+  }), [lang, user, authLoading, error, webEnabled, webAvailable, messages, busy, docs]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

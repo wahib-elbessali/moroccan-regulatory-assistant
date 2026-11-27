@@ -4,13 +4,14 @@ import { AccountRequestPage, LoginPage } from "./pages/auth/AuthPages.jsx";
 import ChatPage from "./pages/chat/ChatPage.jsx";
 import DocumentsPage from "./pages/documents/DocumentsPage.jsx";
 import {
-  AdminAuditPage, AdminDataProvider, AdminOverviewPage, AdminRequestsPage,
+  AdminAuditPage, AdminDataProvider, AdminDocumentsPage, AdminOverviewPage, AdminRequestsPage,
   AdminUsersPage, AdminWebPage,
 } from "./pages/admin/AdminRoutes.jsx";
 import WorkspaceLayout from "./components/WorkspaceLayout.jsx";
 
 function RequireAuth() {
-  const { user } = useApp();
+  const { user, authLoading } = useApp();
+  if (authLoading) return <div role="status" className="p-8 text-sm text-[#777b70]">Chargement…</div>;
   return user ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
@@ -23,7 +24,8 @@ function RequireRole({ roles }) {
 }
 
 function HomeRedirect() {
-  const { user } = useApp();
+  const { user, authLoading } = useApp();
+  if (authLoading) return <div role="status" className="p-8 text-sm text-[#777b70]">Chargement…</div>;
   return <Navigate to={user ? (user.role === "admin" ? "/admin" : `/${user.role}/chat`) : "/login"} replace />;
 }
 
@@ -49,7 +51,7 @@ function RouteTable() {
             <Route index element={<AdminOverviewPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="requests" element={<AdminRequestsPage />} />
-            <Route path="documents" element={<DocumentsPage role="admin" />} />
+            <Route path="documents" element={<AdminDocumentsPage />} />
             <Route path="web" element={<AdminWebPage />} />
             <Route path="audit" element={<AdminAuditPage />} />
           </Route>
