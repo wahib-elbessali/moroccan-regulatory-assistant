@@ -67,11 +67,16 @@ describe("citation rendering and safety", () => {
       language: "fr",
     });
 
+    HTMLElement.prototype.scrollIntoView.mockClear();
     await user.click(screen.getByRole("button", { name: "[1]" }));
 
     expect(screen.getByRole("heading", { name: "Loi test" })).toBeTruthy();
     expect(screen.getByText("Extrait cité")).toBeTruthy();
     expect(screen.getByText("Réponse générée, vérifiez les sources")).toBeTruthy();
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "nearest",
+    });
   });
 
   test("renders untrusted answer text as text rather than HTML", () => {
@@ -118,8 +123,9 @@ describe("citation rendering and safety", () => {
     expect(screen.getByText("Réponse web", { exact: false })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "[1]" }));
 
-    const link = screen.getByRole("link", { name: "Source web ↗" });
+    const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("https://example.test/source");
+    expect(link.textContent).toContain("https://example.test/source");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
