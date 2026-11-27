@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.core.contracts.protocols import LLMClient
+
     from .models import HttpModelsClient
     from .ocr import HttpOCRClient
 
@@ -28,6 +29,7 @@ def real_llm() -> "LLMClient":
 def real_ocr() -> "HttpOCRClient":
     """The real OCRClient: the OCR service."""
     from src.core.config import cfg
+
     from .ocr import HttpOCRClient
 
     return HttpOCRClient(cfg.ocr.base_url)
@@ -36,6 +38,7 @@ def real_ocr() -> "HttpOCRClient":
 def real_models() -> "HttpModelsClient":
     """The real ModelsClient: the models service."""
     from src.core.config import cfg
+
     from .models import HttpModelsClient
 
     return HttpModelsClient(cfg.models.base_url)

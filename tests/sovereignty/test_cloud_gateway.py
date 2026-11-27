@@ -4,7 +4,6 @@ from pathlib import Path
 import httpx
 from fastapi.testclient import TestClient
 
-
 # Load services/cloud-gateway/app.py despite the hyphen in its directory name.
 APP_PATH = (
     Path(__file__).resolve().parents[2]

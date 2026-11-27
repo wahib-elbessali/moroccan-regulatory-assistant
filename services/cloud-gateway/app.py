@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -101,12 +101,12 @@ async def chat_completions(payload: dict[str, Any]):
 
     except HTTPException:
         raise
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Cloud provider timeout")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Cloud provider unavailable")
-    except ValueError:
-        raise HTTPException(status_code=502, detail="Invalid provider response")
+    except httpx.TimeoutException as err:
+        raise HTTPException(status_code=504, detail="Cloud provider timeout") from err
+    except httpx.HTTPError as err:
+        raise HTTPException(status_code=502, detail="Cloud provider unavailable") from err
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail="Invalid provider response") from err
 
 @app.post("/count_tokens")
 async def count_tokens(payload: dict[str, Any]) -> dict[str, int]:
@@ -157,9 +157,9 @@ async def count_tokens(payload: dict[str, Any]) -> dict[str, int]:
 
     except HTTPException:
         raise
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Cloud provider timeout")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Cloud provider unavailable")
-    except ValueError:
-        raise HTTPException(status_code=502, detail="Invalid provider response")
+    except httpx.TimeoutException as err:
+        raise HTTPException(status_code=504, detail="Cloud provider timeout") from err
+    except httpx.HTTPError as err:
+        raise HTTPException(status_code=502, detail="Cloud provider unavailable") from err
+    except ValueError as err:
+        raise HTTPException(status_code=502, detail="Invalid provider response") from err
