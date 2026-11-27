@@ -9,20 +9,23 @@ YAML directly also keeps importing the P4 fake independent of application secret
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config.yaml"
+CONFIG_PATH = Path(
+    os.environ.get("CONFIG_PATH", Path(__file__).resolve().parents[3] / "config.yaml")
+)
 
 
 @lru_cache(maxsize=1)
 def _yaml_config() -> dict[str, Any]:
-    if not _CONFIG_PATH.exists():
+    if not CONFIG_PATH.exists():
         return {}
-    with _CONFIG_PATH.open(encoding="utf-8") as config_file:
+    with CONFIG_PATH.open(encoding="utf-8") as config_file:
         value = yaml.safe_load(config_file) or {}
     return value if isinstance(value, dict) else {}
 
