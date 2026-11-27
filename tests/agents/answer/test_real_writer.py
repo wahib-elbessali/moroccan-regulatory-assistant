@@ -349,6 +349,21 @@ def test_sentence_splitter_handles_all_endings_without_splitting_decimal_numbers
     assert "31.08" in claims[0].text
 
 
+def test_split_claims_attaches_trailing_marker_to_previous_arabic_sentence() -> None:
+    from src.agents.answer.citations import split_claims
+
+    draft = (
+        "[1] الوضعية القانونية … طبق قانونه الوطني. أما إذا لم يثبت نسبه إلى أجنبي، "
+        "فإن الأبوين في المغرب مولودا فيه. [1]"
+    )
+
+    claims = split_claims(draft, {1})
+
+    assert len(claims) == 2
+    assert [claim.cited for claim in claims] == [[1], [1]]
+    assert "أما إذا لم يثبت" in claims[1].text
+
+
 def test_split_claims_inherits_list_introducer_citation_and_skips_introducer() -> None:
     from src.agents.answer.citations import split_claims
 
@@ -417,6 +432,17 @@ def test_excerpt_validator_accepts_multiline_excerpt_from_pdf_source() -> None:
     assert checked_excerpt(excerpt, source, min_chars=10) == (
         "يُحَدِّدُ المبلغَ الشهري للدعم في 350 درهما عن كل طفل يتيم."
     )
+
+
+def test_excerpt_validator_recovers_source_sentence_when_judge_alters_few_words() -> None:
+    from src.agents.answer.citations import checked_excerpt
+
+    source = "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، على ألا يتجاوز سنه " "ست سنوات."
+    judge_excerpt = (
+        "يحدد المبلغ الشهري للدعم بمقدار 350 درهما عن كل طفل، مع أن يتجاوز سنه " "ست سنوات."
+    )
+
+    assert checked_excerpt(judge_excerpt, source, min_chars=10) == source
 
 
 def test_renumber_preserves_line_breaks_between_list_items() -> None:

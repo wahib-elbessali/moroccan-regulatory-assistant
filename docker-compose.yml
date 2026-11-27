@@ -1,8 +1,7 @@
 # P6 infrastructure. Spec: docs/specs/P6-sovereignty.md §3.1; architecture §5.
 # Networks: internal (no internet), front (reachable from the host; only gateway is on it),
 # egress (internet). Only web-search, searxng and cloud-gateway are ever attached to egress.
-# Services marked PLACEHOLDER only answer 200 on their port, so the stack starts before the
-# real code exists. Each one is replaced by its real image when its part is ready.
+# cloud-gateway is still a development placeholder. The UI and API use their project code.
 name: moroccan-regulatory-assistant
 
 x-health: &health
@@ -29,7 +28,7 @@ services:
       ui: {condition: service_healthy}
 
   # ---------------------------------------------------------------- application (internal only)
-  api:  # the real api (P5): FastAPI, run from the project code mounted at /app/src
+  api:  # FastAPI, run from the project code mounted at /app/src
     # The config it reads is derived from config.yaml with `leak_index: real` (CONFIG_PATH), so
     # the leak checks and `seed` talk to web-search; config.yaml itself is not changed.
     build:
@@ -61,6 +60,19 @@ services:
       LEAK_HMAC_KEY: ${LEAK_HMAC_KEY}
       LEAK_API_TOKEN: ${LEAK_API_TOKEN}
       ALLOW_CLOUD_LLM: ${ALLOW_CLOUD_LLM:-false}
+      CONTRACT_RETRIEVAL: real
+      CONTRACT_INGESTION: real
+      CONTRACT_DOCUMENT_RIGHTS: real
+      CONTRACT_AUDIT: real
+      CONTRACT_LLM: real
+      CONTRACT_OCR: real
+      CONTRACT_LEAK_INDEX: real
+      CONTRACT_WEB_SEARCH: real
+      CONTRACT_WEB_AGENT: real
+      CONTRACT_MODELS: real
+      CONTRACT_ORCHESTRATOR: real
+      CONTRACT_WRITER: real
+      CONTRACT_NARRATOR: real
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./alembic.ini:/app/alembic.ini:ro
@@ -76,13 +88,15 @@ services:
       llm: {condition: service_healthy}
       models: {condition: service_healthy}
 
-  ui:  # PLACEHOLDER: P7 app (port 3000 assumed, to confirm with P7)
-    image: python:3.11-slim
-    working_dir: /tmp
-    command: ["python", "-m", "http.server", "3000"]
+  ui:  # P7 application, served by Nginx on port 3000
+    build:
+      context: ./src/ui
+      dockerfile: Dockerfile
+    depends_on:
+      api: {condition: service_healthy}
     healthcheck:
       <<: *health
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:3000/')"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
     networks: [internal]
     volumes:
       - ./config.yaml:/app/config.yaml:ro
@@ -117,6 +131,11 @@ services:
       <<: *health
       test: ["CMD", "ollama", "list"]
     networks: [internal]
+    environment:
+      # Keep every loaded model on the card: Ollama unloads a model after 5 idle minutes by
+      # default, and reloading it takes longer than agents.request_timeout_s, so the first
+      # question after a pause failed. `make warm` loads them once after each start.
+      OLLAMA_KEEP_ALIVE: "-1"
     volumes:
       - ollama_models:/root/.ollama
     # GPU: docker-compose.gpu.yml (`make up-gpu`)

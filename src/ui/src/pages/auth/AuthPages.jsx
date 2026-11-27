@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, BookOpen, KeyRound, Languages, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, KeyRound, Languages } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api.js";
 import { useApp } from "../../app/AppContext.jsx";
@@ -29,7 +29,7 @@ function AuthShell({ children }) {
 }
 
 export function LoginPage() {
-  const { lang, user, login, startDemo, demo, error, setError } = useApp();
+  const { lang, user, login, error, setError } = useApp();
   const t = copy[lang];
   const navigate = useNavigate();
   const [form, setForm] = useState({ username: "", password: "" });
@@ -50,11 +50,6 @@ export function LoginPage() {
     finally { setBusy(false); }
   }
 
-  function chooseDemo(role) {
-    startDemo(role);
-    navigate(role === "admin" ? "/admin" : `/${role}/chat`, { replace: true });
-  }
-
   return <AuthShell>
     <div className="mb-9"><p className="text-xs font-bold uppercase tracking-[.13em] text-[#b76940]">ESPACE SÉCURISÉ</p><h2 className={`mt-2 text-3xl font-semibold text-[#242a24] ${lang === "ar" ? "arabic" : ""}`}>{t.login}</h2><p className="mt-2 text-sm leading-6 text-[#777b70]">{lang === "ar" ? "سجّل الدخول للمتابعة إلى فضائك." : "Connectez-vous pour accéder à votre espace."}</p></div>
     <form className="grid gap-4" onSubmit={submit}>
@@ -64,12 +59,11 @@ export function LoginPage() {
       <Button type="submit" disabled={busy} className="mt-1 h-12 w-full">{busy ? <BusyIcon /> : <KeyRound size={17} />}{t.signIn}<ArrowLeft size={16} className={lang === "ar" ? "" : "rotate-180"} /></Button>
     </form>
     <Link to="/demande-compte" className="focus-ring mt-4 block w-full rounded-md py-3 text-center text-sm font-semibold text-[#245c48] hover:bg-[#e9ede5]">{t.request} →</Link>
-    {demo && <div className="mt-7 border-t border-[#e3e3da] pt-5"><div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-[.12em] text-[#777b70]">{t.demoHint}</span><Sparkles size={16} className="text-[#b76940]" /></div><div className="grid grid-cols-3 gap-2">{["lecteur", "editeur", "admin"].map((role) => <button key={role} onClick={() => chooseDemo(role)} className="focus-ring min-h-11 rounded-md border border-[#dedfd5] bg-white text-sm font-semibold text-[#5b6056] transition hover:border-[#9fae9f]">{t[role]}</button>)}</div></div>}
   </AuthShell>;
 }
 
 export function AccountRequestPage() {
-  const { lang, demo, setError } = useApp();
+  const { lang, setError } = useApp();
   const t = copy[lang];
   const navigate = useNavigate();
   const [form, setForm] = useState({ username: "", full_name: "", password: "", confirm: "" });
@@ -80,12 +74,11 @@ export function AccountRequestPage() {
 
   async function submit(event) {
     event.preventDefault(); setMessage(""); setLocalError(""); setError("");
-    if (form.password.length < MIN_PASSWORD) return setLocalError(t.passwordShort);
+    if (form.password.length < MIN_PASSWORD) return setLocalError(t.passwordShort.replace("{min}", String(MIN_PASSWORD)));
     if (form.password !== form.confirm) return setLocalError(t.passwordMismatch);
     setBusy(true);
     try {
-      if (demo) await new Promise((resolve) => setTimeout(resolve, 450));
-      else await api.auth.requestAccount({ username: form.username, password: form.password, full_name: form.full_name });
+      await api.auth.requestAccount({ username: form.username, password: form.password, full_name: form.full_name });
       setMessage(t.requestSent);
       setForm({ username: "", full_name: "", password: "", confirm: "" });
     } catch (reason) {

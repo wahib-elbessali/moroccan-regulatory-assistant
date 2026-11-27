@@ -204,7 +204,15 @@ def corpus(
 def run_node(ctx: UserContext, query: str = QUERY) -> tuple[dict[str, Any], list[ProcessEvent]]:
     """P3's own ``search_node``, on the state its graph gives it. Nothing here is a copy of it."""
     events: list[ProcessEvent] = []
-    state = {"query": query, "ctx": ctx, "tokens": 0, "emit": events.append}
+    state = {
+        "query": query,
+        "question": query,
+        "current_index": 0,
+        "iteration": 1,
+        "ctx": ctx,
+        "tokens": 0,
+        "emit": events.append,
+    }
     return search_node(state), events  # type: ignore[arg-type]
 
 

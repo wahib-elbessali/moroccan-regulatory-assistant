@@ -9,7 +9,8 @@ from html import escape
 from pathlib import Path
 from time import perf_counter
 
-from src.agents.answer.citations import Source, build_sources, renumber, split_claims
+from src.agents.answer.checks import claim_problem
+from src.agents.answer.citations import Claim, Source, build_sources, renumber, split_claims
 from src.agents.answer.judge import judge
 from src.agents.answer.settings import setting
 from src.agents.answer.texts import UNKNOWN, WEB_ONLY, WEB_PART
@@ -59,6 +60,23 @@ def _count_tokens(llm: LLMClient, messages: list[dict[str, str]], reply: str) ->
         return 0
 
 
+def _check_claims(claims: list[Claim], sources: list[Source], question: str) -> int:
+    """Check again, in code, every claim the Juge accepted; returns how many were dropped."""
+    by_number = {source.number: source for source in sources}
+    dropped = 0
+    for claim in claims:
+        source = by_number.get(claim.source_n) if claim.source_n is not None else None
+        if not claim.supported or source is None:
+            continue
+        source_text = f"{source.title} {source.article or ''} {source.text}"
+        problem = claim_problem(claim.text, question, source_text, claim.excerpt or "")
+        if problem is not None:
+            claim.supported = False
+            claim.reason = problem
+            dropped += 1
+    return dropped
+
+
 def _unknown(language: str) -> Answer:
     return Answer(
         status=AnswerStatus.UNKNOWN,
@@ -89,6 +107,7 @@ class RealWriter(Writer):
             "claim_count": 0,
             "supported_count": 0,
             "judge_fallback": False,
+            "check_dropped": 0,
             "writer_tokens": 0,
             "judge_tokens": 0,
             "language_ms": 0,
@@ -152,6 +171,7 @@ class RealWriter(Writer):
             metrics["judge_ms"] = judge_metrics.duration_ms
             metrics["judge_tokens"] = judge_metrics.tokens_used
             metrics["judge_fallback"] = judge_metrics.fallback_used
+            metrics["check_dropped"] = _check_claims(claims, sources, question)
             kept = [claim for claim in claims if claim.supported]
             metrics["supported_count"] = len(kept)
 
