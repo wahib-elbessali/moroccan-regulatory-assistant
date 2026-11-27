@@ -19,9 +19,9 @@ gw = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gw)
 
 PROVIDER = {
-    "CLOUD_LLM_BASE_URL": "https://provider.test/v1/",
-    "CLOUD_LLM_API_KEY": "test-key",
-    "CLOUD_LLM_MODEL": "cloud-model",
+    "CLOUD_API_BASE": "https://provider.test/v1/",
+    "CLOUD_API_KEY": "test-key",
+    "CLOUD_MODEL": "cloud-model",
 }
 ASK = {
     "model": "qwen2.5:7b",
@@ -132,7 +132,3 @@ def test_nothing_of_the_prompt_or_answer_is_logged(
     logs = "\n".join(r.getMessage() for r in caplog.records)
     assert '"status": "ok"' in logs
     assert "confidentiel" not in logs and "réponse" not in logs and "test-key" not in logs
-
-
-def test_cloud_ocr_is_not_configured(client: TestClient) -> None:
-    assert client.post("/ocr").status_code == 501

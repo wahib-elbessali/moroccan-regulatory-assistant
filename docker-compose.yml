@@ -189,16 +189,17 @@ services:
 
   cloud-gateway:  # dev only, profile `cloud`: Ollama's /api/chat in front of a cloud LLM API
     # Used only by GatewayClient, which refuses to exist unless mode: cloud and
-    # ALLOW_CLOUD_LLM=true. Without CLOUD_LLM_* in .env it answers 503 and sends nothing.
+    # ALLOW_CLOUD_LLM=true. Only this container gets the provider's key; without CLOUD_API_BASE,
+    # CLOUD_API_KEY and CLOUD_MODEL in .env it answers 503 and sends nothing.
     profiles: [cloud]
     build: ./services/cloud-gateway
     healthcheck:
       <<: *health
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health')"]
     environment:
-      CLOUD_LLM_BASE_URL: ${CLOUD_LLM_BASE_URL:-}
-      CLOUD_LLM_API_KEY: ${CLOUD_LLM_API_KEY:-}
-      CLOUD_LLM_MODEL: ${CLOUD_LLM_MODEL:-}
+      CLOUD_API_BASE: ${CLOUD_API_BASE:-}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      CLOUD_MODEL: ${CLOUD_MODEL:-}
     networks: [internal, egress]
 
 networks:

@@ -18,7 +18,12 @@ from src.core.contracts.errors import ServiceError
 
 
 def models_to_load(mode: str, model: str, model_light: str, narration_model: str) -> list[str]:
-    """The answer model of ``mode`` and the narration model, each once, in that order."""
+    """The local models of ``mode``: the answer model, then the narration model, each once.
+
+    In ``cloud`` mode the answer model is not local, so only the narration model is loaded.
+    """
+    if mode == "cloud":
+        return [narration_model]
     answer = model_light if mode == "light" else model
     return list(dict.fromkeys([answer, narration_model]))
 

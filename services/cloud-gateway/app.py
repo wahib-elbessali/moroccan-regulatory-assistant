@@ -10,9 +10,9 @@ under the compose profile ``cloud``. ``GatewayClient`` refuses to exist unless `
 it answers 503 and sends nothing.
 
 Configuration (``.env``, never committed):
-    CLOUD_LLM_BASE_URL  e.g. https://api.groq.com/openai/v1
-    CLOUD_LLM_API_KEY
-    CLOUD_LLM_MODEL     the provider's model name; replaces the Ollama name sent by ``api``
+    CLOUD_API_BASE  e.g. https://api.groq.com/openai/v1
+    CLOUD_API_KEY
+    CLOUD_MODEL     the provider's model name; replaces the Ollama name sent by ``api``
 
 Prompts hold document passages, so nothing of a message or an answer is ever logged: only the
 status, the number of messages and the latency.
@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 logger = logging.getLogger("cloud_gateway")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-TIMEOUT_S = float(os.getenv("CLOUD_LLM_TIMEOUT_S", "120"))
+TIMEOUT_S = float(os.getenv("CLOUD_API_TIMEOUT_S", "120"))
 
 app = FastAPI(title="cloud-gateway")
 
@@ -40,9 +40,9 @@ app = FastAPI(title="cloud-gateway")
 def provider() -> dict[str, str] | None:
     """The provider settings from the environment, or ``None`` when one of them is missing."""
     cfg = {
-        "base_url": os.getenv("CLOUD_LLM_BASE_URL", "").strip().rstrip("/"),
-        "api_key": os.getenv("CLOUD_LLM_API_KEY", "").strip(),
-        "model": os.getenv("CLOUD_LLM_MODEL", "").strip(),
+        "base_url": os.getenv("CLOUD_API_BASE", "").strip().rstrip("/"),
+        "api_key": os.getenv("CLOUD_API_KEY", "").strip(),
+        "model": os.getenv("CLOUD_MODEL", "").strip(),
     }
     return cfg if all(cfg.values()) else None
 
@@ -155,12 +155,6 @@ async def chat(request: Request) -> JSONResponse | StreamingResponse:
             log_call(status, messages, started)
 
     return StreamingResponse(pieces(), media_type="application/x-ndjson")
-
-
-@app.post("/ocr")
-async def ocr() -> JSONResponse:
-    """Cloud OCR is not wired to any provider: OCR stays local in every mode (architecture §8)."""
-    return error(501, "cloud OCR not configured")
 
 
 def _line(obj: dict[str, Any]) -> bytes:

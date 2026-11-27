@@ -18,6 +18,7 @@ def _config(mode: str) -> SimpleNamespace:
             base_url="http://llm:11434",
             model="main-model",
             model_light="light-model",
+            narration_model="narration-model",
             num_ctx=4096,
         ),
     )
@@ -56,3 +57,6 @@ def test_cloud_mode_with_permission_goes_through_the_gateway(
     assert isinstance(client, GatewayClient)
     assert client.base_url == GATEWAY_URL
     assert (client.model, client.num_ctx) == ("main-model", 4096)
+    assert client.narration_model == "narration-model"
+    assert isinstance(client.local, OllamaClient)
+    assert (client.local.base_url, client.local.model) == ("http://llm:11434", "narration-model")
