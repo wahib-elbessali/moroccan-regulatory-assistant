@@ -49,6 +49,53 @@ function requireApiObject(value, predicate, endpoint, lang) {
   return value;
 }
 
+function auditActionLabel(action, t) {
+  if (typeof action !== "string" || !action) return t.audit;
+  return t.auditActions[action] || action.replaceAll("_", " ");
+}
+
+function auditActorLabel(event, users, t) {
+  if (!event.user_id) return t.auditAnonymousActor;
+  const user = users.find((item) => item.user_id === event.user_id);
+  return user ? `${user.full_name} (@${user.username})` : t.auditUnknownActor;
+}
+
+function auditFieldLabel(field, t) {
+  return t.auditFields[field] || field.replaceAll("_", " ");
+}
+
+function shortAuditReference(value, t) {
+  const text = String(value);
+  return text.length > 16 ? `${t.auditReference} ${text.slice(0, 8)}…${text.slice(-4)}` : text;
+}
+
+function auditValue(field, value, users, docs, t) {
+  if (value === null || value === undefined) return "—";
+  if (field === "roles" && Array.isArray(value)) return value.map((role) => roleLabel(String(role), t)).join(", ");
+  if (field === "role" || field === "new_role") return roleLabel(String(value), t);
+  if (["target_user_id", "approved_user", "created_user_id"].includes(field)) {
+    const user = users.find((item) => item.user_id === value);
+    if (user) return `${user.full_name} (@${user.username})`;
+  }
+  if (field === "doc_id") {
+    const document = docs.find((item) => item.doc_id === value);
+    if (document) return document.title;
+  }
+  if (typeof value === "boolean") {
+    if (field === "success") return value ? t.auditSuccess : t.auditFailure;
+    if (field === "failed") return value ? t.auditFailure : t.auditSuccess;
+    if (field === "rejected") return value ? t.auditRejected : t.auditApproved;
+    if (field === "is_active") return value ? t.active : t.disabled;
+    return value ? t.auditYes : t.auditNo;
+  }
+  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "string" && (field.endsWith("_id") || field.endsWith("_user"))) {
+    return shortAuditReference(value, t);
+  }
+  return String(value);
+}
+
 export function AdminDataProvider() {
   const { lang, docs, setDocs, setError } = useApp();
   const [users, setUsers] = useState([]);
@@ -111,7 +158,7 @@ export function AdminOverviewPage() {
         </section>
         <section className="overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] p-5">
           <h2 className="font-bold text-[#343b32]">{t.recentActivity}</h2><p className="mt-1 text-xs text-[#81857a]">{t.auditIntro}</p>
-          {audit.length === 0 ? <p className="mt-3 border-t border-[#e3e3da] py-4 text-sm text-[#777b70]">{t.auditEmpty}</p> : audit.slice(0, 3).map((event, index) => <div key={`${event.timestamp || "event"}-${index}`} className="flex gap-3 border-t border-[#e3e3da] py-3"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#b76940]" /><div><div className="text-xs font-semibold text-[#454b42]">{event.action || "—"}</div><div className="mt-1 text-[11px] text-[#81857a]">{event.username || event.user_id || "—"}{event.timestamp && ` · ${new Date(event.timestamp).toLocaleTimeString(lang === "ar" ? "ar-MA" : "fr-FR", { hour: "2-digit", minute: "2-digit" })}`}</div></div></div>)}
+          {audit.length === 0 ? <p className="mt-3 border-t border-[#e3e3da] py-4 text-sm text-[#777b70]">{t.auditEmpty}</p> : audit.slice(0, 3).map((event, index) => <div key={`${event.timestamp || "event"}-${index}`} className="flex gap-3 border-t border-[#e3e3da] py-3"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#b76940]" /><div><div className="text-xs font-semibold text-[#454b42]">{auditActionLabel(event.action, t)}</div><div className="mt-1 text-[11px] text-[#81857a]">{auditActorLabel(event, users, t)}{event.timestamp && ` · ${new Date(event.timestamp).toLocaleTimeString(lang === "ar" ? "ar-MA" : "fr-FR", { hour: "2-digit", minute: "2-digit" })}`}</div></div></div>)}
         </section>
       </div>
     </>}
@@ -273,15 +320,30 @@ export function AdminWebPage() {
 
 export function AdminAuditPage() {
   const { lang } = useApp();
-  const { audit, loading } = useAdmin();
+  const { audit, loading, users, docs } = useAdmin();
   const t = copy[lang];
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
     <PageHeading eyebrow="AUDIT TRAIL · 03" title={t.audit} intro={t.auditIntro} />
     <section className="mt-8 overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] shadow-sm">
-      {loading ? <p role="status" className="px-5 py-10 text-center text-sm text-[#777b70]">{t.loadingData}</p> : audit.length === 0 ? <p className="px-5 py-12 text-center text-sm text-[#777b70]">{t.auditEmpty}</p> : audit.map((event, index) => <article key={`${event.timestamp || "event"}-${index}`} className="border-b border-[#e9e9e2] px-5 py-4 last:border-b-0">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-[#526750]">{event.action || t.audit}</h2>
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(event).map(([field, value]) => <div key={field} className="min-w-0"><dt className="text-[10px] font-semibold uppercase tracking-wide text-[#85887d]">{field}</dt><dd dir="auto" className="mt-1 break-words text-sm text-[#424940]">{value === null || value === undefined ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
-      </article>)}
+      {loading ? <p role="status" className="px-5 py-10 text-center text-sm text-[#777b70]">{t.loadingData}</p> : audit.length === 0 ? <p className="px-5 py-12 text-center text-sm text-[#777b70]">{t.auditEmpty}</p> : audit.map((event, index) => {
+        const details = event.details && typeof event.details === "object" && !Array.isArray(event.details)
+          ? Object.entries(event.details)
+          : [];
+        const timestamp = event.timestamp ? new Date(event.timestamp) : null;
+        const dateLabel = timestamp && !Number.isNaN(timestamp.getTime())
+          ? timestamp.toLocaleString(lang === "ar" ? "ar-MA" : "fr-FR")
+          : "—";
+        return <article key={`${event.timestamp || "event"}-${index}`} className="border-b border-[#e9e9e2] px-5 py-4 last:border-b-0">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="text-sm font-bold text-[#526750]">{auditActionLabel(event.action, t)}</h2>
+            <time className="text-xs text-[#81857a]">{dateLabel}</time>
+          </div>
+          <p className="mb-3 text-xs text-[#777b70]">{t.auditActor}: {auditActorLabel(event, users, t)}</p>
+          {details.length === 0
+            ? <p className="text-sm text-[#777b70]">{t.auditNoDetails}</p>
+            : <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{details.map(([field, value]) => <div key={field} className="min-w-0"><dt className="text-[10px] font-semibold uppercase tracking-wide text-[#85887d]">{auditFieldLabel(field, t)}</dt><dd dir="auto" className="mt-1 break-words text-sm text-[#424940]">{auditValue(field, value, users, docs, t)}</dd></div>)}</dl>}
+        </article>;
+      })}
     </section>
   </div>;
 }
