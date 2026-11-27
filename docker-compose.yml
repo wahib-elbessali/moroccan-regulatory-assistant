@@ -131,6 +131,11 @@ services:
       <<: *health
       test: ["CMD", "ollama", "list"]
     networks: [internal]
+    environment:
+      # Keep every loaded model on the card: Ollama unloads a model after 5 idle minutes by
+      # default, and reloading it takes longer than agents.request_timeout_s, so the first
+      # question after a pause failed. `make warm` loads them once after each start.
+      OLLAMA_KEEP_ALIVE: "-1"
     volumes:
       - ollama_models:/root/.ollama
     # GPU: docker-compose.gpu.yml (`make up-gpu`)
