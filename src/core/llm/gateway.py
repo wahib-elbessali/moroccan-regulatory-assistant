@@ -1,4 +1,4 @@
-"""``GatewayClient``: the ``LLMClient`` of ``cloud`` mode, through ``cloud-gateway`` (P6-11, P6-14).
+"""``GatewayClient`` and ``GatewayOCRClient``: the clients of ``cloud`` mode (P6-11, P6-12, P6-14).
 
 ``cloud`` mode is for development only: the demo and every evaluation run locally, offline. So the
 client refuses to exist unless both switches are on, ``mode: cloud`` in ``config.yaml`` **and**
@@ -18,6 +18,8 @@ import httpx
 
 from src.core.contracts.errors import ServiceError
 
+from .ocr import DEFAULT_TIMEOUT_S as OCR_TIMEOUT_S
+from .ocr import HttpOCRClient
 from .ollama import DEFAULT_TIMEOUT_S, OllamaClient
 
 ALLOW_ENV = "ALLOW_CLOUD_LLM"
@@ -70,3 +72,28 @@ class GatewayClient(OllamaClient):
             client=client,
             async_client=async_client,
         )
+
+
+class GatewayOCRClient(HttpOCRClient):
+    """``OCRClient`` that sends a page to ``cloud-gateway`` (P6-12, cloud fallback; P6-14 lock).
+
+    Not used by ``real_ocr``: OCR stays local in every mode. ``cloud-gateway`` answers its
+    ``/ocr`` with 501 until a cloud OCR provider is wired, which this client turns into
+    ``ServiceError`` like any refusal.
+
+    Raises:
+        ServiceError: ``cloud mode not allowed``, unless ``cloud_allowed`` (P6-14).
+    """
+
+    def __init__(
+        self,
+        mode: str,
+        *,
+        base_url: str = GATEWAY_URL,
+        environ: dict[str, str] | None = None,
+        timeout_s: float = OCR_TIMEOUT_S,
+        client: httpx.Client | None = None,
+    ) -> None:
+        if not cloud_allowed(mode, environ):
+            raise ServiceError(NOT_ALLOWED)
+        super().__init__(base_url, timeout_s=timeout_s, client=client)

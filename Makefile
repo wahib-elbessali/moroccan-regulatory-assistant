@@ -1,4 +1,4 @@
-.PHONY: models up up-light up-gpu warm down test-isolation seed
+.PHONY: models up up-light up-gpu up-cloud warm down test-isolation seed
 
 # Owner of the `upload` rows of data/raw/manifest.csv. document_rights is fake for now, so this
 # development UUID is not checked against a user. Override: `make seed OWNER=<uuid>`.
@@ -19,6 +19,11 @@ up-light:
 up-gpu:
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
 	$(MAKE) warm
+
+# Development only: the language model through cloud-gateway (needs ALLOW_CLOUD_LLM=true and
+# CLOUD_LLM_* in .env). Nothing to warm: the answer model is not local.
+up-cloud:
+	MODE=cloud docker compose --profile cloud up -d --wait
 
 # Loads the answer model and the narration model onto the card, so the first question does not
 # time out while they load. The `up` targets run it; run it by hand after a plain `docker compose up`.

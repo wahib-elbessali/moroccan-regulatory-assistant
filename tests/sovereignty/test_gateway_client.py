@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from src.core.contracts.errors import ServiceError
-from src.core.llm.gateway import GatewayClient, cloud_allowed
+from src.core.llm.gateway import GatewayClient, GatewayOCRClient, cloud_allowed
 
 ALLOWED = {"ALLOW_CLOUD_LLM": "true"}
 
@@ -80,3 +80,25 @@ def test_an_unreachable_gateway_is_a_service_error() -> None:
     client = GatewayClient("cloud", model="m", num_ctx=512, environ=ALLOWED, client=http)
     with pytest.raises(ServiceError):
         client.chat([{"role": "user", "content": "q"}])
+
+
+@pytest.mark.parametrize(
+    ("mode", "environ"), [("local", ALLOWED), ("cloud", {}), ("cloud", {"ALLOW_CLOUD_LLM": "no"})]
+)
+def test_the_ocr_client_has_the_same_lock(mode: str, environ: dict[str, str]) -> None:
+    with pytest.raises(ServiceError, match="cloud mode not allowed"):
+        GatewayOCRClient(mode, environ=environ)
+
+
+def test_the_ocr_client_turns_the_gateway_refusal_into_a_service_error() -> None:
+    calls: list[httpx.Request] = []
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(501, json={"error": "cloud OCR not configured"})
+
+    http = httpx.Client(transport=httpx.MockTransport(gateway), base_url="http://cloud-gateway")
+    ocr = GatewayOCRClient("cloud", environ=ALLOWED, client=http)
+    with pytest.raises(ServiceError):
+        ocr.ocr_page(b"\x89PNG", "ar")
+    assert calls[0].url.path == "/ocr"
