@@ -1,53 +1,95 @@
-# P7 Demo — presentation walkthrough
+# Démo P7 — déroulé de présentation
 
-Objective: verify the complete user journey on the demo machine.
+Objectif : vérifier le parcours utilisateur complet sur le portable de démonstration. Chaque étape précise l’utilisateur, l’action et le résultat attendu à l’écran.
 
-## Preparation before the presentation
+## Préparation avant le public
 
-- In PowerShell, go to the repository root. On first startup, create `.env` from `.env.example`, enter the secrets, then download the models once with `python services/download_models.py` (Internet required).
-- Start the stack from the same directory with `docker compose up -d --wait`. Then check `http://localhost:3000`.
-- Prepare a real administrator account in `.env`.
+- Dans PowerShell, se placer à la racine du dépôt. Au premier démarrage, créer `.env` depuis `.env.example`, renseigner les secrets, puis télécharger les modèles une fois avec `python services/download_models.py` (Internet requis).
+- Démarrer en mode léger avec le GPU :
 
-The names and passwords below are placeholders. Replace them with the actual values used on the demo machine.
+  ```powershell
+  $env:MODE="light"; docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait; docker compose exec -T api python -m src.core.llm.warmup; $env:MODE=""
+  ```
 
-| Item | Value |
+- Attendre la fin du warmup des deux modèles avant de poser la première question. Vérifier ensuite `http://localhost:3000`.
+- Internet reste déconnecté pendant les étapes locales. Lorsque la recherche Web est activée pour le test hors ligne, le fil de réflexion doit indiquer que la recherche a été ignorée. Internet n'est réactivé que pour la comparaison cloud finale.
+- La comparaison cloud nécessite un véritable service cloud configuré et `ALLOW_CLOUD_LLM=true`. Dans la configuration actuelle du dépôt, `cloud-gateway` est un placeholder de développement, pas un service LLM opérationnel : ne pas annoncer la comparaison comme réussie avant de l'avoir configurée et testée.
+- Les questions évaluées ci-dessous sont copiées exactement de `evaluation/dataset.jsonl`; garder la recherche Web désactivée sauf pour le test « ignorée ».
+- Le jeu retenu ne contient pas de question arabe mêlée à un seul mot français. Pour respecter la consigne de n'utiliser que les questions vérifiées, ne pas improviser ni utiliser l'ancienne question « délai traitement ». Le rendu RTL est vérifié avec la question Darija `p2-12`.
+
+Préparer un compte administrateur réel dans `.env`. Les noms et mots de passe ci-dessous sont des emplacements à remplacer par les valeurs réelles de la machine de démonstration.
+
+| Élément | Valeur |
 |---|---|
-| Administrator account | `<ADMIN_USERNAME>` |
-| Administrator password | `<ADMIN_PASSWORD>` |
-| Reader account | `demo_lecteur` |
-| Reader password | `<DEMO_PASSWORD>` |
-| Editor account | `demo_editeur` |
-| Editor password | `<DEMO_EDITOR_PASSWORD>` |
-| Private PDF | `<DEMO_PRIVATE_PDF>` |
-| Public PDF | `<DEMO_PUBLIC_PDF>` |
+| Compte administrateur | `<ADMIN_USERNAME>` |
+| Mot de passe administrateur | `<ADMIN_PASSWORD>` |
+| Compte lecteur | `demo_lecteur` |
+| Mot de passe lecteur | `<DEMO_PASSWORD>` |
+| Compte éditeur | `demo_editeur` |
+| Mot de passe éditeur | `<DEMO_EDITOR_PASSWORD>` |
+| PDF privé de répétition | `data/raw/uploads/01_talab_maaloumat_idariya.pdf` |
+| PDF public à téléverser par l'éditeur | `<DEMO_PUBLIC_PDF>` |
 
-## Demo walkthrough — Lecteur
+Le PDF privé indiqué est le fichier de test synthétique présent dans le dépôt. Le téléverser depuis le compte lecteur afin qu'il soit privé à ce compte. **À faire avant la répétition sur le portable de démonstration : confirmer que ce fichier et la question ci-dessous donnent une réponse avec citation.**
 
-| No. | User | Action | Expected on-screen result |
+## Déroulé — comptes et lecteur
+
+| N° | Utilisateur | Action | Résultat qui doit apparaître à l'écran |
 |---:|---|---|---|
-| 1 | Presenter | Open `http://localhost:3000`. On the login screen, switch between « عربي » and « FR » if needed. | Secure login screen with the banner « Royaume du Maroc · النصوص التنظيمية », the title « Assistant réglementaire » or « المعين القانوني », and the fields « Nom d’utilisateur » / « اسم المستخدم » and « Mot de passe » / « كلمة المرور ». |
-| 2 | New reader | Click « Demander un compte » / « طلب حساب ». Enter `demo_lecteur`, the demo full name, the password, and its confirmation. | « CRÉATION DE COMPTE » form with all four fields. After submission, a green banner appears: « Votre demande a été envoyée. Un administrateur l’examinera. » / « تم إرسال طلبك. سيراجعه أحد المسؤولين. » |
-| 3 | Administrator | Sign out if needed, then sign in with the administrator account. Click « Demandes de compte » / « طلبات الحساب ». Select the `Lecteur` / `قارئ` role, click « Approuver » / « موافقة », then « Confirmer l’approbation ». | The `demo_lecteur` request is listed. After approval, it disappears from « Demandes en attente » / « لا توجد طلبات معلقة », and the user appears under « Utilisateurs ». |
-| 4 | Lecteur | Sign out from the administrator account. Sign in as `demo_lecteur` with `<DEMO_PASSWORD>`. | Chat screen in « ESPACE LECTEUR » / « فضاء القارئ ». The menu contains « Conversation » / « المحادثة » and « Documents » / « الوثائق ». No administration screen is shown. |
-| 5 | Lecteur | Click « Documents », then « Ajouter un document » / « رفع وثيقة ». Select `<DEMO_PRIVATE_PDF>`, enter its title, source, and date, then click « Téléverser » / « رفع الوثيقة ». | The document card shows its name, visibility « Privé · vous seul » / « خاص · لك فقط », and the sequence `Reçu` → `Extraction` → `Découpage` → `Indexation` → `Prêt`. Its final status is « Prêt » / « جاهز ». |
-| 6 | Lecteur | Return to « Conversation ». Close the history panel if needed, then ask the prepared question about the private document, for example: `Dans le document privé démontré, quelles dispositions sont applicables et à quelles conditions ?` Then ask this question in Arabic: `ما هي الوثائق التي يمكن الاستناد إليها لدعم التصريح بواقعة الولادة؟` | For the private-document question: an answer with one or more markers `[1]`, `[2]`, a « Confiance » / « درجة الثقة » indicator, and the message « Réponse générée, vérifiez les sources ». The citation panel shows the title, article, page, source, and excerpt. The Arabic question and its answer display correctly from right to left. |
-| 7 | Lecteur | Click the icon to hide and then show the conversation history. Click « Nouvelle conversation », then ask the prepared mixed Arabic-French question: `ما هو délai traitement الطلبات الإدارية؟` | Each message remains readable in Arabic or French using `dir="auto"`; citation markers remain isolated as `[1]` and do not appear reversed as `]1[`. |
-| 8 | Lecteur | Reload the page, open « Historique » / « سجل المحادثات », then reopen the conversation containing the previous questions. | The history lists conversations with their dates. Questions, answers, and citations are restored, and no new question is added to the conversation history. |
-| 9 | Administrator | Sign out from the reader account and start a new session with the administrator account. Go to « Recherche web » / « البحث في الويب ». Disable web search for the `Lecteur` role, then save the change in the panel. | One switch is shown for each role. The switch for `Lecteur` is off. After reloading the reader account, the « Recherche web » control disappears from the chat. |
-| 10 | Lecteur | Reload or reopen the reader session. Check the top of the screen and ask another question. | No « Recherche web » switch is visible. The new request is sent with `use_web = false`. |
-| 11 | Administrator | Open « Droits documentaires » / « صلاحيات الوثائق », select a corpus document, change its visibility from `Public` to `Interne` or vice versa, then open « Journal d’audit » / « سجل التدقيق ». | The visibility choice is updated in the document list. The audit log shows the recent administrative action and its details as text, without rendering HTML. |
-| 12 | Lecteur | Click « Documents », then click « Supprimer » for a demo document and confirm on the page. | An in-page confirmation appears, with no browser dialog. After confirmation, the document disappears from the list. |
-| 13 | Presenter | Sign out using « Déconnexion » / « تسجيل الخروج ». | The login screen appears. The current conversation, displayed documents, and entered questions are no longer on screen; signing in again retrieves only the data saved in the API. |
+| 1 | Présentateur | Ouvrir `http://localhost:3000`. Sur l'écran de connexion, basculer entre « عربي » et « FR » si nécessaire. | Écran sécurisé de connexion avec la bannière « Royaume du Maroc · النصوص التنظيمية », le titre « Assistant réglementaire » ou « المعين القانوني », et les champs « Nom d’utilisateur » / « اسم المستخدم » et « Mot de passe » / « كلمة المرور ». |
+| 2 | Nouveau lecteur | Cliquer sur « Demander un compte » / « طلب حساب ». Saisir `demo_lecteur`, le nom complet de démonstration, le mot de passe et sa confirmation. | Formulaire « CRÉATION DE COMPTE ». Après l'envoi, confirmation « Votre demande a été envoyée. Un administrateur l’examinera. » / « تم إرسال طلبك. سيراجعه أحد المسؤولين. » |
+| 3 | Administrateur | Se connecter avec le compte administrateur. Ouvrir « Demandes de compte » / « طلبات الحساب », choisir le rôle `Lecteur` / `قارئ` pour `demo_lecteur`, puis approuver et confirmer. | La demande disparaît des demandes en attente et `demo_lecteur` apparaît dans « Utilisateurs ». |
+| 4 | Nouvel éditeur | Cliquer sur « Demander un compte » / « طلب حساب ». Saisir `demo_editeur`, le nom complet, le mot de passe et sa confirmation. | Confirmation que la demande de compte a été envoyée. |
+| 5 | Administrateur | Dans « Demandes de compte », choisir le rôle `Éditeur` / `محرر` pour `demo_editeur`, puis approuver et confirmer. | La demande disparaît de la liste et `demo_editeur` apparaît dans « Utilisateurs » avec le rôle Éditeur. |
+| 6 | Lecteur | Se déconnecter de l'administrateur et se connecter avec `demo_lecteur` et `<DEMO_PASSWORD>`. | Écran de chat dans l'« ESPACE LECTEUR » / « فضاء القارئ ». Le menu contient « Conversation » / « المحادثة » et « Documents » / « الوثائق » ; aucun écran d'administration n'est affiché. |
+| 7 | Lecteur | Dans « Documents », ajouter `data/raw/uploads/01_talab_maaloumat_idariya.pdf`, saisir un titre, une source et une date, puis téléverser. | Le document passe par `Reçu` → `Extraction` → `Découpage` → `Indexation` → `Prêt` et indique « Privé · vous seul » / « خاص · لك فقط ». |
+| 8 | Lecteur | Dans « Conversation », poser exactement : `ما المعلومات التي يطلبها مقدم الطلب في الملف DEMO-REQ-2048، ومن الجهة المذكورة لتتبع الملف؟` | Réponse citant le PDF privé, indiquant les informations demandées (documents requis et délai d'étude) ainsi que le « مكتب الخدمات الرقمية التجريبي ». Le panneau de citation montre le titre et l'extrait du PDF. **Confirmer ce résultat sur le portable avant la répétition.** |
 
-## Demo variation — Éditeur
+## Questions évaluées — Lecteur
 
-The chat, history, and answer-viewing steps are the same as for Lecteur. The difference to demonstrate is that Éditeur can choose public visibility when adding a document.
+Pour chaque question, la saisir telle quelle, sans reformulation, et vérifier la présence d'une réponse citée. Les références attendues sont celles de `evaluation/dataset.jsonl`.
 
-| No. | User | Action | Expected on-screen result |
+| N° | Utilisateur | Action | Résultat qui doit apparaître à l'écran |
 |---:|---|---|---|
-| 1 | New editor | Click « Demander un compte » / « طلب حساب ». Enter `demo_editeur`, the demo full name, the password, and its confirmation. | Confirmation that the account request was sent. |
-| 2 | Administrator | In « Demandes de compte » / « طلبات الحساب », select the `Éditeur` / `محرر` role for `demo_editeur`, then approve the request. | The request disappears from the pending requests list, and the user appears under « Utilisateurs » with the Éditeur role. |
-| 3 | Éditeur | Sign in as `demo_editeur` with `<DEMO_EDITOR_PASSWORD>`. Open « Documents », add `<DEMO_PUBLIC_PDF>`, enter its title, source, and date, select « Public » visibility, then upload the document. | The upload form offers « Public » and « Interne » visibility options. The document is added with « Public » visibility. |
-| 4 | Éditeur | Wait until the document is ready, open « Conversation », and ask a question whose answer is in the public PDF. | The document status is « Prêt ». The answer can cite the public document; the citation panel shows its title and matching excerpt. |
+| 9 | Lecteur | Poser `p1-01` : `من يعتبر مغربيا عن طريق النسب أو البنوة وفقا لقانون الجنسية المغربية؟` | Réponse citant `adala_002.pdf`, الفصل 6. |
+| 10 | Lecteur | Poser `p1-02` : `ما هي الوضعية القانونية لجنسية الطفل المولود في المغرب من أبوين مجهولين؟` | Réponse citant `adala_002.pdf`, الفصل 7. |
+| 11 | Lecteur | Poser `p1-05` : `ممن يتكون مجلس العائلة وفقا لأحكام المرسوم رقم 2.04.88؟` | Réponse citant `adala_011.pdf`, المادة الأولى. |
+| 12 | Lecteur | Poser `p1-07` : `كيف يحدد عدد المفوضين القضائيين بدوائر نفوذ المحاكم الابتدائية وفق القانون رقم 46.21؟` | Réponse citant `sgg_7412.pdf`, المادة 11. |
+| 13 | Lecteur | Poser `p2-06` : `ما هو المصدر الرسمي الوحيد لرسوم الحالة المدنية ومستخرجاتها، وأين يمسك؟` | Réponse citant `adala_004.pdf`, المادة 14. |
+| 14 | Lecteur | Poser en Darija, sans modification, `p2-12` : `شحال من يوم عند مؤسسة الرعاية الاجتماعية باش تصرح بأي تغيير وقع فـ العناصر اللي تمنحت على أساسها الرخصة؟` | Réponse citant `adala_003.pdf`, المادة 17. Le texte arabe reste lisible de droite à gauche. |
+| 15 | Lecteur | Poser `p3-03` : `كيف تتكون اللجنة المكلفة بالبحث المنصوص عليها في المادة 16 من القانون رقم 15.01 المتعلق بكفالة الأطفال المهملين؟` | Réponse citant `adala_012.pdf`, المادة الأولى. |
+| 16 | Lecteur | Poser `p6-03` : `ما هو المبلغ الشهري للدعم المباشر المخصص للنساء الأرامل في وضعية هشة عن كل طفل يتيم؟` | Réponse citant `adala_010.pdf`, المادة 11. |
+| 17 | Lecteur | Poser `p6-05` : `ما هو الأجل الذي يجب أن تبت فيه اللجنة الإقليمية الدائمة في طلبات الدعم المباشر للنساء الأرامل في وضعية هشة؟` | Réponse citant `adala_010.pdf`, المادة 7. |
+| 18 | Lecteur | Poser `p6-06` : `كيف يؤدى الدعم المباشر للأرملة المستفيدة؟` | Réponse citant `adala_010.pdf`, المادة 13. |
+| 19 | Lecteur | Poser `p6-10` : `ما هو المرسوم الذي نسخه المرسوم رقم 2.04.88 بشأن تكوين مجلس العائلة وتحديد مهامه؟` | Réponse citant `adala_011.pdf`, المادة التاسعة. |
+
+## Vérification des accès et réponse inconnue
+
+| N° | Utilisateur | Action | Résultat qui doit apparaître à l'écran |
+|---:|---|---|---|
+| 20 | Lecteur | Poser `p1-11` : `ما هي مدة حفظ الوثائق المثبتة لإجراءات تناسب أنظمة الذكاء الاصطناعي وفق مسودة مشروع القانون الداخلي؟` | Réponse exacte : `لم أجد هذه المعلومة في الوثائق المتاحة لك.` Aucune citation du document interne ne doit apparaître. |
+| 21 | Éditeur | Se connecter avec `demo_editeur` et poser exactement la même question, `p1-12`. | Réponse citant le document interne `internal_01_ai_governance.pdf`, المادة 4, avec l'information : `تحفظ الوثائق المثبتة لمدة لا تقل عن ثلاث سنوات.` |
+| 22 | Lecteur | Revenir au compte lecteur. Activer « Recherche web » / « البحث في الويب » tout en gardant Internet déconnecté, puis poser `p2-13` : `ما هو أجل التراجع الممنوح للمستهلك في البيع عن بعد حسب القانون رقم 31.08 المتعلق بتدابير حماية المستهلك؟` | Le fil de réflexion indique que la recherche Web a été ignorée (`Recherche Web non effectuée` / `لم يُجرَ البحث عبر الويب`). La réponse finale est `لم أجد هذه المعلومة في الوثائق المتاحة لك.` |
+| 23 | Lecteur | Masquer puis réafficher l'historique, ouvrir « Nouvelle conversation », puis recharger la page et rouvrir l'historique. | Les conversations et questions enregistrées sont restaurées ; l'arabe reste en RTL et les citations restent attachées aux réponses. |
+
+## Variante de démonstration — Éditeur et document public
+
+| N° | Utilisateur | Action | Résultat qui doit apparaître à l'écran |
+|---:|---|---|---|
+| 24 | Éditeur | Se connecter avec `demo_editeur` et poser `p2-05` exactement : `كم مرة تنعقد اجتماعات لجنة المراقبة في السنة، وما هو أجل توجيه الاستدعاءات إلى أعضائها؟` | Réponse citant `adala_009.pdf`, المادة 8. |
+| 25 | Éditeur | Dans « Documents », ajouter `<DEMO_PUBLIC_PDF>`, renseigner son titre, sa source et sa date, choisir « Public », puis téléverser et attendre la fin du traitement. | Le document atteint l'état « Prêt » et sa visibilité est indiquée « Public ». |
+| 26 | Administrateur | Ouvrir « Droits documentaires » / « صلاحيات الوثائق », changer la visibilité d'un document du corpus entre `Public` et `Interne`, puis ouvrir « Journal d'audit » / « سجل التدقيق ». | La visibilité affichée est mise à jour ; le journal montre l'action et ses détails en texte. |
+| 27 | Lecteur | Dans « Documents », vérifier la liste après publication. | **Note de validation :** le backend autorise le lecteur à rechercher les documents publics, mais la page Documents de l'interface peut actuellement les masquer. Ne pas utiliser leur présence dans cette liste comme critère de réussite avant correction de l'interface. |
+| 28 | Lecteur | Supprimer le PDF privé de démonstration et confirmer dans la page. | Confirmation dans la page, sans boîte de dialogue du navigateur ; après confirmation, le PDF privé disparaît de la liste. |
+
+## Comparaison cloud — dernière étape
+
+Internet est réactivé uniquement pour cette étape. Utiliser une question vérifiée portant sur un document public, sans document privé.
+
+**Prérequis bloquant :** dans `docker-compose.yml`, le service `cloud-gateway` est actuellement un serveur HTTP placeholder, pas une passerelle LLM. Cette dernière étape ne peut être présentée comme fonctionnelle qu'après configuration d'un véritable fournisseur cloud, activation autorisée (`ALLOW_CLOUD_LLM=true`) et test préalable sur le portable de démonstration.
+
+| N° | Utilisateur | Action | Résultat qui doit apparaître à l'écran |
+|---:|---|---|---|
+| 29 | Présentateur et Lecteur | Poser exactement la question `p2-06` — `ما هو المصدر الرسمي الوحيد لرسوم الحالة المدنية ومستخرجاتها، وأين يمسك؟` — une fois en mode `light`, puis une fois en mode `cloud`. Afficher ou capturer les deux résultats côte à côte. | Comparaison côte à côte des deux réponses et de leurs citations. Les deux doivent s'appuyer sur la source publique `adala_004.pdf`, المادة 14. Après ce test, couper de nouveau Internet. |
 
 
