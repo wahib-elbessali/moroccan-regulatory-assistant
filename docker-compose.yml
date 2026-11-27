@@ -1,4 +1,4 @@
-# P6 infrastructure. Spec: docs/specs/P6-sovereignty.md §3.1; architecture §5.
+﻿# P6 infrastructure. Spec: docs/specs/P6-sovereignty.md Â§3.1; architecture Â§5.
 # Networks: internal (no internet), front (reachable from the host; only gateway is on it),
 # egress (internet). Only web-search, searxng and cloud-gateway are ever attached to egress.
 # Services marked PLACEHOLDER only answer 200 on their port, so the stack starts before the
@@ -168,11 +168,18 @@ services:
     volumes:
       - ./services/searxng:/etc/searxng
 
-  cloud-gateway:  # PLACEHOLDER: dev only, profile `cloud`
+  cloud-gateway:
     profiles: [cloud]
-    image: python:3.11-slim
-    working_dir: /tmp
-    command: ["python", "-m", "http.server", "8000"]
+    build:
+      context: ./services/cloud-gateway
+      dockerfile: Dockerfile
+    environment:
+      CLOUD_API_BASE: ${CLOUD_API_BASE:-}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      CLOUD_MODEL: ${CLOUD_MODEL:-}
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health')"]
     networks: [internal, egress]
 
 networks:

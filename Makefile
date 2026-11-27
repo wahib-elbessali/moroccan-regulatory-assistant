@@ -1,4 +1,4 @@
-.PHONY: models up up-light up-gpu down test-isolation seed
+.PHONY: models up up-light up-gpu up-cloud up-light-gpu down test-isolation seed
 
 # Owner of the `upload` rows of data/raw/manifest.csv. document_rights is fake for now, so this
 # development UUID is not checked against a user. Override: `make seed OWNER=<uuid>`.
@@ -28,3 +28,12 @@ test-isolation:
 seed:
 	docker compose exec api python -m src.ingestion.cli seed --owner $(OWNER) --raw-dir /app/data/raw
 	docker compose exec -T api python - < scripts/leak_unblock_public.py
+
+# Cloud mode: Gemini through the isolated cloud-gateway.
+up-cloud:
+	MODE=cloud ALLOW_CLOUD_LLM=true docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile cloud up -d --wait
+
+# Return to the local light model with GPU support.
+up-light-gpu:
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile cloud rm -sf cloud-gateway
+	MODE=light ALLOW_CLOUD_LLM=false docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait
