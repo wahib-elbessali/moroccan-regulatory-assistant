@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../src/ui/src/api.js";
@@ -73,16 +73,17 @@ describe("citation rendering and safety", () => {
       language: "fr",
     });
 
-    HTMLElement.prototype.scrollIntoView.mockClear();
+    // The panel sits above the pinned question box: the page scrolls to its very bottom, vertically.
+    const page = document.scrollingElement || document.documentElement;
+    const scrollTo = vi.fn();
+    page.scrollTo = scrollTo;
     await user.click(screen.getByRole("button", { name: "[1]" }));
 
     expect(screen.getByRole("heading", { name: "Loi test" })).toBeTruthy();
     expect(screen.getByText("Extrait cité")).toBeTruthy();
     expect(screen.getByText("Réponse générée, vérifiez les sources")).toBeTruthy();
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "nearest",
-    });
+    expect(scrollTo).toHaveBeenCalledWith({ top: page.scrollHeight, behavior: "smooth" });
+    delete page.scrollTo;
   });
 
   test("closes the selected citation when the conversation changes", async () => {
@@ -157,30 +158,34 @@ describe("citation rendering and safety", () => {
 
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("https://example.test/source");
-    expect(link.textContent).toContain("https://example.test/source");
+    expect(link.textContent).toContain("example.test");
+    expect(link.textContent).not.toContain("https://example.test/source");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  test("wraps long citation content and keeps the full URL left-to-right in Arabic", async () => {
+  test("shows a long web address by its site name only, left-to-right in Arabic", async () => {
     const user = userEvent.setup();
-    const url = `https://example.test/${"long-path-segment-".repeat(12)}`;
+    const url = `https://www.example.test/${"%D8%B8%D9%87".repeat(40)}.pdf`;
     renderAnswer({
       status: "answered",
       text: "إجابة [1].",
-      citations: [citation({ excerpt: "مقتطف طويل للاختبار", url })],
+      citations: [citation({ excerpt: "مقتطف طويل للاختبار", url, source: url })],
       confidence: 0.8,
       language: "ar",
     }, "ar");
 
+    expect(document.body.textContent).not.toContain("%D8");
     await user.click(screen.getByRole("button", { name: "[1]" }));
 
-    const urlText = screen.getByText(url);
-    expect(urlText.getAttribute("dir")).toBe("ltr");
-    expect(urlText.className).toContain("break-all");
-    expect(urlText.className).toContain("[overflow-wrap:anywhere]");
+    expect(document.body.textContent).not.toContain("%D8");
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe(url);
+    const siteName = within(link).getByText("example.test");
+    expect(siteName.getAttribute("dir")).toBe("ltr");
+    expect(siteName.className).toContain("[overflow-wrap:anywhere]");
+    expect(siteName.className).not.toContain("break-words");
     expect(screen.getByText("مقتطف طويل للاختبار").className).toContain("[overflow-wrap:anywhere]");
-    expect(screen.getByRole("link").textContent).toContain(url);
   });
 
   test("keeps a citation without a URL as a non-link source", async () => {

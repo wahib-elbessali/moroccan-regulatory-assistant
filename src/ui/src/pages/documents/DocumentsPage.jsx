@@ -5,6 +5,15 @@ import { useApp } from "../../app/AppContext.jsx";
 import { copy, FILE_TYPES, pause, statusNames } from "../../app/data.js";
 import { Button, Field, Metric, StatusPill } from "../../components/Ui.jsx";
 
+// A real calendar date written YYYY-MM-DD (rejects 2026-28-11 or 2026-02-30).
+export function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 function documentErrorMessage(error, translations) {
   if (error === "ServiceError") return translations.documentServiceError;
   if (error === "OCR quality too low") return translations.documentOcrError;
@@ -31,6 +40,7 @@ export default function DocumentsPage({ role, loading = false }) {
     event.preventDefault(); setError("");
     if (!file || !form.title.trim()) return setError(lang === "ar" ? "اختر ملفًا وأدخل عنوان الوثيقة." : "Choisissez un fichier et renseignez son titre.");
     if (file.size > 20_000_000) return setError(lang === "ar" ? "حجم الملف يتجاوز 20 ميغابايت." : "Le fichier dépasse la limite de 20 Mo.");
+    if (form.date.trim() && !isValidDate(form.date.trim())) return setError(t.invalidDate);
     if (role === "editeur" && !form.visibility) return setError(lang === "ar" ? "اختر مستوى الإتاحة." : "Choisissez une visibilité.");
     setBusy(true);
     try {
@@ -68,7 +78,7 @@ export default function DocumentsPage({ role, loading = false }) {
 
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
     <div className="flex flex-wrap items-end justify-between gap-5">
-      <div><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b76940]">DOCUMENTS · 02</p><h1 className={`mt-2 text-3xl font-semibold text-[#28362b] ${lang === "ar" ? "arabic" : ""}`}>{isAdmin ? t.docRights : t.docsTitle}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#777b70]">{isAdmin ? t.adminDocsIntro : t.docsIntro}</p></div>
+      <div><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#b76940]">{t.eyebrowDocs} · 02</p><h1 className={`mt-2 text-3xl font-semibold text-[#28362b] ${lang === "ar" ? "arabic" : ""}`}>{isAdmin ? t.docRights : t.docsTitle}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#777b70]">{isAdmin ? t.adminDocsIntro : t.docsIntro}</p></div>
       {!isAdmin && <Button className="rounded-lg px-5 shadow-sm" onClick={() => setFormOpen(!formOpen)}><FilePlus2 size={17} />{t.upload}</Button>}
     </div>
     {!loading && <div className="mt-7 grid gap-px overflow-hidden rounded-xl border border-[#e3e3da] bg-[#e3e3da] sm:grid-cols-3">

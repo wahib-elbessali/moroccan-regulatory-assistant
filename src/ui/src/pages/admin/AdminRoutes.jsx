@@ -56,7 +56,9 @@ function auditActionLabel(action, t) {
 function auditActorLabel(event, users, t) {
   if (!event.user_id) return t.auditAnonymousActor;
   const user = users.find((item) => item.user_id === event.user_id);
-  return user ? `${user.full_name} (@${user.username})` : t.auditUnknownActor;
+  if (!user) return t.auditUnknownActor;
+  const name = user.role === "admin" ? roleLabel("admin", t) : user.full_name;
+  return `${name} (@${user.username})`;
 }
 
 function auditFieldLabel(field, t) {
@@ -147,12 +149,12 @@ export function AdminOverviewPage() {
   const t = copy[lang];
   const corpusDocs = docs.filter((doc) => !doc.is_mine);
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
-    <PageHeading eyebrow="ADMINISTRATION · 03" title={t.adminTitle} intro={t.adminIntro} />
+    <PageHeading eyebrow={`${t.eyebrowAdmin} · 03`} title={t.adminTitle} intro={t.adminIntro} />
     {loading ? <div role="status" className="mt-8 rounded-xl border border-[#e3e3da] bg-[#fbfaf6] p-6 text-sm text-[#777b70]"><Activity className="me-2 inline animate-pulse text-[#789078]" size={17} />{t.loadingData}</div> : <>
       <div className="mt-8 grid gap-px overflow-hidden rounded-xl border border-[#e3e3da] bg-[#e3e3da] sm:grid-cols-3"><Metric icon={FileCheck2} label={t.totalDocs} value={corpusDocs.length} /><Metric icon={Clock3} label={t.pending} value={corpusDocs.filter((doc) => !["ready", "failed"].includes(doc.status)).length} /><Metric icon={Users} label={t.accountCount} value={users.length} /></div>
       <div className="mt-8 grid gap-5 md:grid-cols-[1.2fr_.8fr]">
         <section className="overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] p-5">
-          <div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-bold text-[#343b32]">{t.requests}</h2><p className="mt-1 text-xs text-[#81857a]">{t.requestsIntro}</p></div><Link to="/admin/requests" className="focus-ring shrink-0 rounded px-2 py-1 text-sm font-semibold text-[#245c48]">{t.requests} →</Link></div>
+          <div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-bold text-[#343b32]">{t.requests}</h2><p className="mt-1 text-xs text-[#81857a]">{t.requestsIntro}</p></div><Link to="/admin/requests" className="focus-ring shrink-0 rounded px-2 py-1 text-sm font-semibold text-[#245c48]">{t.requests} {lang === "ar" ? "←" : "→"}</Link></div>
           {requests.length === 0 ? <p className="border-t border-[#e3e3da] py-4 text-sm text-[#777b70]">{t.noRequests}</p> : requests.slice(0, 3).map((request) => <div key={request.request_id} className="flex items-center justify-between gap-4 border-t border-[#e3e3da] py-3"><div><div className="text-sm font-semibold text-[#3d443a]">{request.full_name}</div><div className="text-xs text-[#81857a]">@{request.username}</div></div><span className="rounded-full bg-[#f3eddf] px-2.5 py-1 text-[10px] font-semibold text-[#896a34]">{t.pendingStatus}</span></div>)}
         </section>
         <section className="overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] p-5">
@@ -213,7 +215,7 @@ export function AdminUsersPage() {
   }
 
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
-    <PageHeading eyebrow="IDENTITY · 03" title={t.users} intro={t.usersIntro} />
+    <PageHeading eyebrow={`${t.eyebrowUsers} · 03`} title={t.users} intro={t.usersIntro} />
     <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
       <span className="rounded-full bg-[#edf0e9] px-3 py-1 text-xs font-semibold text-[#526750]">{loading ? "…" : users.length}</span>
       <Button disabled={loading || roles.length === 0} onClick={() => setCreateOpen(!createOpen)}><Plus size={16} />{t.addUser}</Button>
@@ -275,7 +277,7 @@ export function AdminRequestsPage() {
   }
 
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
-    <PageHeading eyebrow="ACCOUNT REQUESTS · 03" title={t.requests} intro={t.requestsIntro} />
+    <PageHeading eyebrow={`${t.eyebrowRequests} · 03`} title={t.requests} intro={t.requestsIntro} />
     <section className="mt-7 overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] shadow-sm">
       <div className="flex items-center justify-between border-b border-[#e9e9e2] px-5 py-4"><h2 className="font-bold text-[#30382e]">{t.requests}</h2><span className="rounded-full bg-[#f3eddf] px-3 py-1 text-xs font-semibold text-[#896a34]">{loading ? "…" : requests.length}</span></div>
       {loading ? <p role="status" className="px-5 py-10 text-center text-sm text-[#777b70]">{t.loadingData}</p> : requests.length === 0 ? <p className="px-5 py-12 text-center text-sm text-[#777b70]">{t.noRequests}</p> : requests.map((request) => <article key={request.request_id} className="border-b border-[#e9e9e2] p-5 last:border-b-0">
@@ -310,7 +312,7 @@ export function AdminWebPage() {
     } catch (reason) { setError(reason.message); }
   }
   return <div className="mx-auto max-w-[900px] px-4 py-8 md:px-8">
-    <PageHeading eyebrow="WEB ACCESS · 03" title={t.roleWeb} intro={t.webIntro} />
+    <PageHeading eyebrow={`${t.eyebrowWeb} · 03`} title={t.roleWeb} intro={t.webIntro} />
     <section className="mt-8 overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] shadow-sm">
       {loading ? <p role="status" className="px-5 py-10 text-center text-sm text-[#777b70]">{t.loadingData}</p> : roles.length === 0 ? <p className="px-5 py-12 text-center text-sm text-[#777b70]">{t.noRoles}</p> : roles.map((role) => <label key={role.role_id} className="flex cursor-pointer items-center justify-between gap-4 border-b border-[#e9e9e2] px-5 py-5 last:border-b-0"><span><span className="block font-semibold text-[#31392f]">{roleLabel(role.name, t)}</span><span className="mt-1 block text-xs text-[#81857a]">{t.allowWeb}</span></span><input type="checkbox" disabled={loading} checked={role.web_enabled} onChange={() => setWeb(role)} className="h-5 w-5 accent-[#245c48] disabled:cursor-not-allowed disabled:opacity-50" /></label>)}
     </section>
@@ -322,7 +324,7 @@ export function AdminAuditPage() {
   const { audit, loading, users, docs } = useAdmin();
   const t = copy[lang];
   return <div className="mx-auto max-w-[1160px] px-4 py-8 md:px-8">
-    <PageHeading eyebrow="AUDIT TRAIL · 03" title={t.audit} intro={t.auditIntro} />
+    <PageHeading eyebrow={`${t.eyebrowAudit} · 03`} title={t.audit} intro={t.auditIntro} />
     <section className="mt-8 overflow-hidden rounded-xl border border-[#e3e3da] bg-[#fbfaf6] shadow-sm">
       {loading ? <p role="status" className="px-5 py-10 text-center text-sm text-[#777b70]">{t.loadingData}</p> : audit.length === 0 ? <p className="px-5 py-12 text-center text-sm text-[#777b70]">{t.auditEmpty}</p> : audit.map((event, index) => {
         const details = event.details && typeof event.details === "object" && !Array.isArray(event.details)
