@@ -200,6 +200,7 @@ services:
       CLOUD_API_BASE: ${CLOUD_API_BASE:-}
       CLOUD_API_KEY: ${CLOUD_API_KEY:-}
       CLOUD_MODEL: ${CLOUD_MODEL:-}
+      CLOUD_REASONING_TOKENS: ${CLOUD_REASONING_TOKENS:-0}
     networks: [internal, egress]
 
 networks:

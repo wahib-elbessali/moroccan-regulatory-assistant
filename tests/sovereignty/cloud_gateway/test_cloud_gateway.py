@@ -132,3 +132,18 @@ def test_nothing_of_the_prompt_or_answer_is_logged(
     logs = "\n".join(r.getMessage() for r in caplog.records)
     assert '"status": "ok"' in logs
     assert "confidentiel" not in logs and "réponse" not in logs and "test-key" not in logs
+
+
+@pytest.mark.parametrize(
+    ("extra", "sent"), [(None, 50), ("0", 50), ("1400", 1450), ("bad", 50), ("-5", 50)]
+)
+def test_reasoning_tokens_are_added_to_max_tokens(
+    client: TestClient, provider: dict, monkeypatch: pytest.MonkeyPatch, extra, sent: int
+) -> None:
+    """A thinking model needs room for hidden reasoning on top of what the app asks for."""
+    if extra is None:
+        monkeypatch.delenv("CLOUD_REASONING_TOKENS", raising=False)
+    else:
+        monkeypatch.setenv("CLOUD_REASONING_TOKENS", extra)
+    client.post("/api/chat", json={**ASK, "stream": False})
+    assert json.loads(provider["requests"][0].content)["max_tokens"] == sent

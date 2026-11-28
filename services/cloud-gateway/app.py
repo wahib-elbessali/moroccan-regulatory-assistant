@@ -13,6 +13,9 @@ Configuration (``.env``, never committed):
     CLOUD_API_BASE  e.g. https://api.groq.com/openai/v1
     CLOUD_API_KEY
     CLOUD_MODEL     the provider's model name; replaces the Ollama name sent by ``api``
+    CLOUD_REASONING_TOKENS  optional, default 0: tokens added to every ``max_tokens``. A thinking
+                    model spends part of ``max_tokens`` on hidden reasoning; with the app's small
+                    budgets (100 for grading) it would return no text at all.
 
 Prompts hold document passages, so nothing of a message or an answer is ever logged: only the
 status, the number of messages and the latency.
@@ -60,8 +63,16 @@ def to_openai(body: dict[str, Any], model: str) -> dict[str, Any]:
         "stream": bool(body.get("stream", True)),
     }
     if options.get("num_predict") is not None:
-        out["max_tokens"] = options["num_predict"]
+        out["max_tokens"] = options["num_predict"] + reasoning_tokens()
     return out
+
+
+def reasoning_tokens() -> int:
+    """Extra tokens for a thinking model's hidden reasoning (``CLOUD_REASONING_TOKENS``)."""
+    try:
+        return max(0, int(os.getenv("CLOUD_REASONING_TOKENS", "0").strip() or 0))
+    except ValueError:
+        return 0
 
 
 def log_call(status: str, messages: int, started: float) -> None:
