@@ -12,7 +12,7 @@ vi.mock("../../src/ui/src/api.js", () => ({
   },
 }));
 
-function renderAnswer(answer) {
+function chatView(answer, lang = "fr", conversationId = "conversation-1") {
   const messages = [{
     id: "answer-1",
     question: "Question test",
@@ -20,21 +20,27 @@ function renderAnswer(answer) {
     status: "done",
     thinking: null,
   }];
-  return render(
-    <ChatView
-      lang="fr"
-      t={copy.fr}
-      webEnabled={false}
-      messages={messages}
-      setMessages={vi.fn()}
-      busy={false}
-      setBusy={vi.fn()}
-      conversationId="conversation-1"
-      onConversationCreated={vi.fn()}
-      onMessageSaved={vi.fn()}
-      onPersistenceError={vi.fn()}
-    />,
+  return (
+    <div dir={lang === "ar" ? "rtl" : "ltr"}>
+      <ChatView
+        lang={lang}
+        t={copy[lang]}
+        webEnabled={false}
+        messages={messages}
+        setMessages={vi.fn()}
+        busy={false}
+        setBusy={vi.fn()}
+        conversationId={conversationId}
+        onConversationCreated={vi.fn()}
+        onMessageSaved={vi.fn()}
+        onPersistenceError={vi.fn()}
+      />
+    </div>
   );
+}
+
+function renderAnswer(answer, lang, conversationId) {
+  return render(chatView(answer, lang, conversationId));
 }
 
 function citation(overrides = {}) {
@@ -77,6 +83,32 @@ describe("citation rendering and safety", () => {
       behavior: "smooth",
       block: "nearest",
     });
+  });
+
+  test("closes the selected citation when the conversation changes", async () => {
+    const user = userEvent.setup();
+    const firstAnswer = {
+      status: "answered",
+      text: "Réponse fondée [1].",
+      citations: [citation()],
+      confidence: 0.9,
+      language: "fr",
+    };
+    const secondAnswer = {
+      status: "answered",
+      text: "Autre réponse.",
+      citations: [],
+      confidence: 0.8,
+      language: "fr",
+    };
+    const { rerender } = renderAnswer(firstAnswer);
+
+    await user.click(screen.getByRole("button", { name: "[1]" }));
+    expect(screen.getByRole("heading", { name: "Loi test" })).toBeTruthy();
+
+    rerender(chatView(secondAnswer, "fr", "conversation-2"));
+
+    expect(screen.queryByRole("heading", { name: "Loi test" })).toBeNull();
   });
 
   test("renders untrusted answer text as text rather than HTML", () => {
@@ -128,6 +160,27 @@ describe("citation rendering and safety", () => {
     expect(link.textContent).toContain("https://example.test/source");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  test("wraps long citation content and keeps the full URL left-to-right in Arabic", async () => {
+    const user = userEvent.setup();
+    const url = `https://example.test/${"long-path-segment-".repeat(12)}`;
+    renderAnswer({
+      status: "answered",
+      text: "إجابة [1].",
+      citations: [citation({ excerpt: "مقتطف طويل للاختبار", url })],
+      confidence: 0.8,
+      language: "ar",
+    }, "ar");
+
+    await user.click(screen.getByRole("button", { name: "[1]" }));
+
+    const urlText = screen.getByText(url);
+    expect(urlText.getAttribute("dir")).toBe("ltr");
+    expect(urlText.className).toContain("break-all");
+    expect(urlText.className).toContain("[overflow-wrap:anywhere]");
+    expect(screen.getByText("مقتطف طويل للاختبار").className).toContain("[overflow-wrap:anywhere]");
+    expect(screen.getByRole("link").textContent).toContain(url);
   });
 
   test("keeps a citation without a URL as a non-link source", async () => {
