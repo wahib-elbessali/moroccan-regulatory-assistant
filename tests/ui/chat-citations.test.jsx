@@ -73,17 +73,17 @@ describe("citation rendering and safety", () => {
       language: "fr",
     });
 
-    HTMLElement.prototype.scrollIntoView.mockClear();
+    // The panel sits above the pinned question box: the page scrolls to its very bottom, vertically.
+    const page = document.scrollingElement || document.documentElement;
+    const scrollTo = vi.fn();
+    page.scrollTo = scrollTo;
     await user.click(screen.getByRole("button", { name: "[1]" }));
 
     expect(screen.getByRole("heading", { name: "Loi test" })).toBeTruthy();
     expect(screen.getByText("Extrait cité")).toBeTruthy();
     expect(screen.getByText("Réponse générée, vérifiez les sources")).toBeTruthy();
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
+    expect(scrollTo).toHaveBeenCalledWith({ top: page.scrollHeight, behavior: "smooth" });
+    delete page.scrollTo;
   });
 
   test("closes the selected citation when the conversation changes", async () => {

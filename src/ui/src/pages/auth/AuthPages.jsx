@@ -58,7 +58,7 @@ export function LoginPage() {
       {(message || error) && <p role="alert" className="rounded-md bg-[#f8e9e5] px-3 py-2.5 text-sm text-[#9b4435]">{message || error}</p>}
       <Button type="submit" disabled={busy} className="mt-1 h-12 w-full">{busy ? <BusyIcon /> : <KeyRound size={17} />}{t.signIn}<ArrowLeft size={16} className={lang === "ar" ? "" : "rotate-180"} /></Button>
     </form>
-    <Link to="/demande-compte" className="focus-ring mt-4 block w-full rounded-md py-3 text-center text-sm font-semibold text-[#245c48] hover:bg-[#e9ede5]">{t.request} →</Link>
+    <Link to="/demande-compte" className="focus-ring mt-4 block w-full rounded-md py-3 text-center text-sm font-semibold text-[#245c48] hover:bg-[#e9ede5]">{t.request} {lang === "ar" ? "←" : "→"}</Link>
   </AuthShell>;
 }
 
@@ -98,6 +98,6 @@ export function AccountRequestPage() {
       {error && <p role="alert" className="rounded-md bg-[#f8e9e5] px-3 py-2.5 text-sm text-[#9b4435]">{error}</p>}
       <Button type="submit" disabled={busy} className="h-12 w-full">{busy ? <BusyIcon /> : <KeyRound size={17} />}{t.sendRequest}</Button>
     </form>
-    <Link to="/login" className="focus-ring mt-4 block w-full rounded-md py-3 text-center text-sm font-semibold text-[#245c48] hover:bg-[#e9ede5]">{t.login} →</Link>
+    <Link to="/login" className="focus-ring mt-4 block w-full rounded-md py-3 text-center text-sm font-semibold text-[#245c48] hover:bg-[#e9ede5]">{t.login} {lang === "ar" ? "←" : "→"}</Link>
   </AuthShell>;
 }
