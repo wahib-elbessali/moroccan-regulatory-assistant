@@ -14,7 +14,6 @@ export function AppProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState(initialDocs);
-
   useEffect(() => {
     localStorage.setItem("assistant-language", lang);
   }, [lang]);

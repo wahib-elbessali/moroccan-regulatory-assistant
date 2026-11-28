@@ -34,6 +34,10 @@ export default function ChatView({
   }, [messages]);
 
   useEffect(() => {
+    setSelectedCitation(null);
+  }, [conversationId]);
+
+  useEffect(() => {
     if (selectedCitation) {
       citationPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }

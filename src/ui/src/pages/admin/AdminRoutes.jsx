@@ -48,7 +48,6 @@ function requireApiObject(value, predicate, endpoint, lang) {
   if (!predicate(value)) throw new Error(copy[lang].invalidApiResponse.replace("{endpoint}", endpoint));
   return value;
 }
-
 function auditActionLabel(action, t) {
   if (typeof action !== "string" || !action) return t.audit;
   return t.auditActions[action] || action.replaceAll("_", " ");
@@ -341,7 +340,7 @@ export function AdminAuditPage() {
           <p className="mb-3 text-xs text-[#777b70]">{t.auditActor}: {auditActorLabel(event, users, t)}</p>
           {details.length === 0
             ? <p className="text-sm text-[#777b70]">{t.auditNoDetails}</p>
-            : <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{details.map(([field, value]) => <div key={field} className="min-w-0"><dt className="text-[10px] font-semibold uppercase tracking-wide text-[#85887d]">{auditFieldLabel(field, t)}</dt><dd dir="auto" className="mt-1 break-words text-sm text-[#424940]">{auditValue(field, value, users, docs, t)}</dd></div>)}</dl>}
+            : <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{details.map(([field, value]) => <div key={field} className="min-w-0"><dt className="text-[10px] font-semibold uppercase tracking-wide text-[#85887d]">{auditFieldLabel(field, t)}</dt><dd dir="auto" className={`mt-1 break-words text-sm text-[#424940] ${lang === "ar" ? "text-right" : ""}`}>{auditValue(field, value, users, docs, t)}</dd></div>)}</dl>}
         </article>;
       })}
     </section>
