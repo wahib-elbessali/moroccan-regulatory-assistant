@@ -24,7 +24,16 @@ BASH_PROBE = [
     "-c",
     "timeout 5 bash -c '</dev/tcp/1.1.1.1/443' && echo connected",
 ]
+# For images with neither python nor bash (the ui image is nginx on Alpine: BusyBox sh and nc).
+# -v makes nc print why it failed ("Network unreachable"), so a block is told apart from a
+# missing command.
+SH_PROBE = [
+    "sh",
+    "-c",
+    "timeout 5 nc -zv -w 5 1.1.1.1 443 && echo connected",
+]
 USES_PYTHON = {"api", "ocr", "searxng", "web-search"}
+USES_SH = {"ui"}
 
 # What a genuinely blocked connection looks like (not a missing command).
 NETWORK_ERROR = re.compile(r"unreachable|timed out|timeout", re.IGNORECASE)
@@ -67,7 +76,12 @@ def _exec(service: str, cmd: list[str], timeout: int = 40):
 
 
 def _probe(service: str):
-    cmd = PY_PROBE if service in USES_PYTHON else BASH_PROBE
+    if service in USES_PYTHON:
+        cmd = PY_PROBE
+    elif service in USES_SH:
+        cmd = SH_PROBE
+    else:
+        cmd = BASH_PROBE
     return _exec(service, cmd)
 
 
