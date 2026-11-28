@@ -5,7 +5,7 @@ import { copy, initialDocs } from "./data.js";
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
-  const [lang, setLang] = useState("ar");
+  const [lang, setLang] = useState(() => localStorage.getItem("assistant-language") === "fr" ? "fr" : "ar");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [error, setError] = useState("");
@@ -14,6 +14,9 @@ export function AppProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState(initialDocs);
+  useEffect(() => {
+    localStorage.setItem("assistant-language", lang);
+  }, [lang]);
 
   function setWebEnabled(enabled) {
     localStorage.setItem("assistant-web-enabled", String(enabled));
