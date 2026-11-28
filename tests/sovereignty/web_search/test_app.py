@@ -393,6 +393,57 @@ def test_search_handles_upstream_http_error(api, monkeypatch):
     assert response.json() == {"code": "search_unavailable"}
 
 
+def test_search_unavailable_when_no_engine_answers(api, monkeypatch):
+    # Internet off: SearxNG answers 200 with no results and every engine unresponsive.
+    client, _, _ = api
+
+    async def fake_get(*args, **kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", "http://searxng:8080/search"),
+            json={
+                "results": [],
+                "unresponsive_engines": [
+                    ["duckduckgo", "connection error"],
+                    ["wikipedia", "timeout"],
+                ],
+            },
+        )
+
+    monkeypatch.setattr(web_app.app.state.http_client, "get", fake_get)
+
+    response = client.post(
+        "/search",
+        json={"query": "ordinary search", "max_results": 5, "request_id": REQUEST_ID},
+        headers=auth(),
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"code": "search_unavailable"}
+
+
+def test_search_with_no_result_from_working_engines_is_empty(api, monkeypatch):
+    client, _, _ = api
+
+    async def fake_get(*args, **kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", "http://searxng:8080/search"),
+            json={"results": [], "unresponsive_engines": []},
+        )
+
+    monkeypatch.setattr(web_app.app.state.http_client, "get", fake_get)
+
+    response = client.post(
+        "/search",
+        json={"query": "ordinary search", "max_results": 5, "request_id": REQUEST_ID},
+        headers=auth(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"results": []}
+
+
 def test_search_logs_allowed_query(api, caplog):
     client, _, _ = api
     query = "weather forecast in Casablanca"
