@@ -5,7 +5,7 @@ step gives who acts, what they do and what must appear on screen. Every question
 by hand against its reference answer in the evaluation (`evaluation/dataset.jsonl`); use them
 exactly as written, and no others.
 
-The internet is off for the whole demo, except the last step (cloud comparison).
+The internet is off for the whole demo, except the last part (cloud comparison).
 
 ## Before the demo
 
@@ -98,13 +98,39 @@ and the answer comes from the documents only. This is the intended behaviour: no
 
 ## Cloud comparison
 
-The only step with the internet on, shown apart from the rest.
+The only part with the internet on, shown apart from the rest. Only the answer model goes to the
+cloud; the narration model, embeddings, re-ranker and OCR stay on the machine.
+
+Before the demo, add these lines to `.env` on the demo machine (the key is never shown on screen):
+
+```
+ALLOW_CLOUD_LLM=true
+CLOUD_API_BASE=https://integrate.api.nvidia.com/v1
+CLOUD_API_KEY=<NVIDIA API key, from build.nvidia.com>
+CLOUD_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+CLOUD_REASONING_TOKENS=1400
+```
+
+`ALLOW_CLOUD_LLM=true` alone sends nothing: the stack also has to be started in `cloud` mode.
+
+To switch to cloud mode, from the repository root, in PowerShell:
+
+```powershell
+$env:MODE="cloud"; docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile cloud up -d --wait; docker compose exec -T api python -m src.core.llm.warmup; $env:MODE=""
+```
+
+To switch back to `light` mode:
+
+```powershell
+docker compose --profile cloud rm -s -f cloud-gateway; $env:MODE="light"; docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --wait; docker compose exec -T api python -m src.core.llm.warmup; $env:MODE=""
+```
 
 | No. | User | Action | Expected on screen |
 |---:|---|---|---|
-| 1 | Presenter | Turn the internet on and switch the stack to cloud mode. | The same interface, the same accounts and the same documents. |
-| 2 | Reader | Ask reader questions 2 and 6, then a question that got "I don't know" in `light` mode while search had found the right article. | Fuller answers, with the same citations and the same checks. The difference comes from the larger model, not from the design. |
-| 3 | Presenter | Switch back to `light` mode and turn the internet off. | Back to the offline system. |
+| 1 | Reader | Still in `light` mode, ask p4-01: ما السن الذي تكتمل فيه أهلية الزواج وفق مدونة الأسرة؟ | « لم أجد هذه المعلومة في الوثائق المتاحة لك. »: search finds the right article, but the small model does not answer from it. |
+| 2 | Presenter | Turn the internet on and switch to cloud mode (command above). | The same interface, the same accounts and the same documents. |
+| 3 | Reader | Ask p4-01 again, then reader questions 2 and 6. | p4-01: eighteen full solar years (المادة 19, family code). Questions 2 and 6: the same content as in `light` mode, with the same citations and the same checks. Each answer within 60 s. The difference comes from the larger model, not from the design. |
+| 4 | Presenter | Switch back to `light` mode (command above) and turn the internet off. | Back to the offline system. |
 
 ## If a step fails
 
