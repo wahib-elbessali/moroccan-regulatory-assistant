@@ -51,7 +51,7 @@ export function LoginPage() {
   }
 
   return <AuthShell>
-    <div className="mb-9"><p className="text-xs font-bold uppercase tracking-[.13em] text-[#b76940]">ESPACE SÉCURISÉ</p><h2 className={`mt-2 text-3xl font-semibold text-[#242a24] ${lang === "ar" ? "arabic" : ""}`}>{t.login}</h2><p className="mt-2 text-sm leading-6 text-[#777b70]">{lang === "ar" ? "سجّل الدخول للمتابعة إلى فضائك." : "Connectez-vous pour accéder à votre espace."}</p></div>
+    <div className="mb-9"><p className="text-xs font-bold uppercase tracking-[.13em] text-[#b76940]">{t.secureSpace}</p><h2 className={`mt-2 text-3xl font-semibold text-[#242a24] ${lang === "ar" ? "arabic" : ""}`}>{t.login}</h2><p className="mt-2 text-sm leading-6 text-[#777b70]">{lang === "ar" ? "سجّل الدخول للمتابعة إلى فضائك." : "Connectez-vous pour accéder à votre espace."}</p></div>
     <form className="grid gap-4" onSubmit={submit}>
       <Field label={t.username} autoComplete="username" required minLength={3} maxLength={32} value={form.username} onChange={update("username")} />
       <Field label={t.password} type="password" autoComplete="current-password" required value={form.password} onChange={update("password")} />
@@ -88,7 +88,7 @@ export function AccountRequestPage() {
   }
 
   return <AuthShell>
-    <div className="mb-9"><p className="text-xs font-bold uppercase tracking-[.13em] text-[#b76940]">CRÉATION DE COMPTE</p><h2 className={`mt-2 text-3xl font-semibold text-[#242a24] ${lang === "ar" ? "arabic" : ""}`}>{t.request}</h2><p className="mt-2 text-sm leading-6 text-[#777b70]">{lang === "ar" ? "سيتم إنشاء حسابك بعد موافقة المسؤول." : "Votre compte sera créé après validation par un administrateur."}</p></div>
+    <div className="mb-9"><p className="text-xs font-bold uppercase tracking-[.13em] text-[#b76940]">{t.accountCreation}</p><h2 className={`mt-2 text-3xl font-semibold text-[#242a24] ${lang === "ar" ? "arabic" : ""}`}>{t.request}</h2><p className="mt-2 text-sm leading-6 text-[#777b70]">{lang === "ar" ? "سيتم إنشاء حسابك بعد موافقة المسؤول." : "Votre compte sera créé après validation par un administrateur."}</p></div>
     <form className="grid gap-4" onSubmit={submit}>
       <Field label={t.username} autoComplete="username" required minLength={3} maxLength={32} pattern={"[A-Za-z0-9._\\-]+"} value={form.username} onChange={update("username")} />
       <Field label={t.fullName} required maxLength={100} value={form.full_name} onChange={update("full_name")} />

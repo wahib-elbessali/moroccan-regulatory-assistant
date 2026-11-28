@@ -70,14 +70,14 @@ export default function ChatPage() {
     setConversations((items) => [conversation, ...items.filter((item) => (item.conversation_id || item.id) !== id)]);
   };
 
-  return <div className={`mx-auto grid min-h-[calc(100vh-68px)] max-w-[1440px] ${historyOpen ? "md:grid-cols-[260px_minmax(0,1fr)]" : "md:grid-cols-1"}`}>
+  return <div className={`grid min-h-[calc(100vh-68px)] grid-cols-1 ${historyOpen ? "md:grid-cols-[260px_minmax(0,1fr)]" : ""}`}>
     {historyOpen && <aside id="conversation-history" className="max-h-[36vh] overflow-y-auto border-b border-[#e3e3da] bg-[#fbfaf6] p-4 scrollbar-thin md:sticky md:top-[68px] md:h-[calc(100vh-68px)] md:max-h-none md:self-start md:border-b-0 md:border-e">
       <button disabled={busy} onClick={startNewConversation} className="focus-ring mb-5 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#245c48] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#193e33]"><Plus size={16} />{t.newConversation}</button>
       <h2 className="mb-3 px-1 text-[11px] font-bold uppercase tracking-[.12em] text-[#777b70]">{t.history}</h2>
-      {conversations.length === 0 ? <p className="px-1 py-3 text-xs leading-5 text-[#777b70]">{t.noHistory}</p> : <ul className="grid gap-1">
+      {conversations.length === 0 ? <p className="px-1 py-3 text-xs leading-5 text-[#777b70]">{t.noHistory}</p> : <ul className="grid grid-cols-1 gap-1">
         {conversations.map((conversation) => {
           const id = conversation.conversation_id || conversation.id;
-          return <li key={id} className={`group rounded-lg border transition-colors ${conversationId === id ? "border-[#cbd8c9] bg-[#e9eee7]" : "border-transparent hover:border-[#e3e3da] hover:bg-white"}`}>
+          return <li key={id} className={`group min-w-0 rounded-lg border transition-colors ${conversationId === id ? "border-[#cbd8c9] bg-[#e9eee7]" : "border-transparent hover:border-[#e3e3da] hover:bg-white"}`}>
             <div className="flex items-center gap-1 p-1">
               <button disabled={busy} onClick={() => openConversation(id)} aria-current={conversationId === id ? "page" : undefined} className="focus-ring min-h-12 min-w-0 flex-1 rounded-md px-2 py-2 text-start">
                 <span dir="auto" className="block truncate text-xs font-semibold text-[#3d443a]">{conversation.title || t.newConversation}</span>
