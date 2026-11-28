@@ -4,12 +4,16 @@ import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../../src/ui/src/api.js";
 import { copy } from "../../src/ui/src/app/data.js";
-import { AdminDataProvider, AdminRequestsPage, AdminUsersPage, AdminWebPage } from "../../src/ui/src/pages/admin/AdminRoutes.jsx";
+import { AdminAuditPage, AdminDataProvider, AdminRequestsPage, AdminUsersPage, AdminWebPage } from "../../src/ui/src/pages/admin/AdminRoutes.jsx";
 
-const { setDocs, setError } = vi.hoisted(() => ({ setDocs: vi.fn(), setError: vi.fn() }));
+const { appState, setDocs, setError } = vi.hoisted(() => ({
+  appState: { lang: "fr", docs: [] },
+  setDocs: vi.fn(),
+  setError: vi.fn(),
+}));
 
 vi.mock("../../src/ui/src/app/AppContext.jsx", () => ({
-  useApp: () => ({ lang: "fr", docs: [], setDocs, setError }),
+  useApp: () => ({ lang: appState.lang, docs: appState.docs, setDocs, setError }),
 }));
 
 vi.mock("../../src/ui/src/api.js", () => ({
@@ -41,6 +45,8 @@ function NavigateToUsers() {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  appState.lang = "fr";
+  appState.docs = [];
 });
 
 test("admin user creation uses the API response identity without retaining the password", async () => {
@@ -261,4 +267,94 @@ test("admin web settings stay unchanged when the API response violates RoleRespo
   ));
   expect(api.admin.setRoleWeb).toHaveBeenCalledWith(1, false);
   expect(webSwitch.checked).toBe(true);
+});
+test("audit log shows translated actions, named users, and readable detail fields", async () => {
+  api.admin.users.mockResolvedValue([
+    {
+      user_id: "admin-id",
+      username: "admin.user",
+      full_name: "Admin User",
+      role: "admin",
+      is_active: true,
+      created_at: "2026-11-24T10:00:00Z",
+    },
+    {
+      user_id: "target-id",
+      username: "target.user",
+      full_name: "Target User",
+      role: "lecteur",
+      is_active: true,
+      created_at: "2026-11-24T10:00:00Z",
+    },
+  ]);
+  api.admin.audit.mockResolvedValue([{
+    id: "audit-1",
+    user_id: "admin-id",
+    action: "update_role",
+    details: { target_user_id: "target-id", new_role: "lecteur" },
+    timestamp: "2026-11-27T10:00:00Z",
+  }]);
+
+  render(
+    <MemoryRouter initialEntries={["/audit"]}>
+      <Routes>
+        <Route element={<AdminDataProvider />}>
+          <Route path="/audit" element={<AdminAuditPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("Modification du rôle d’un utilisateur")).toBeTruthy();
+  expect(screen.getByText("Auteur: Admin User (@admin.user)")).toBeTruthy();
+  expect(screen.getByText("Compte concerné")).toBeTruthy();
+  expect(screen.getByText("Target User (@target.user)")).toBeTruthy();
+  expect(screen.getByText("Lecteur")).toBeTruthy();
+  expect(screen.queryByText("target-id")).toBeNull();
+});
+
+test("aligns a document title in Arabic RTL audit details", async () => {
+  appState.lang = "ar";
+  appState.docs = [{
+    doc_id: "doc-1",
+    title: "Internal document",
+    source_file: "internal-document.pdf",
+    status: "ready",
+    roles: ["lecteur", "editeur"],
+    is_mine: false,
+    created_at: "2026-11-27T09:00:00Z",
+  }];
+  api.admin.audit.mockResolvedValue([{
+    id: "audit-document-1",
+    action: "admin_update",
+    details: { doc_id: "doc-1", roles: ["lecteur", "editeur"] },
+    timestamp: "2026-11-27T10:00:00Z",
+  }]);
+  api.documents.list.mockResolvedValue([{
+    doc_id: "doc-1",
+    title: "Internal document",
+    source_file: "internal-document.pdf",
+    status: "ready",
+    roles: ["lecteur", "editeur"],
+    is_mine: false,
+    created_at: "2026-11-27T09:00:00Z",
+  }]);
+
+  render(
+    <div dir="rtl">
+      <MemoryRouter initialEntries={["/audit"]}>
+        <Routes>
+          <Route element={<AdminDataProvider />}>
+            <Route path="/audit" element={<AdminAuditPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </div>,
+  );
+
+  const documentTitle = await screen.findByText("Internal document");
+  expect(screen.getByText(copy.ar.auditFields.doc_id)).toBeTruthy();
+  expect(documentTitle.getAttribute("dir")).toBe("auto");
+  expect(documentTitle.className).toContain("text-right");
+  expect(screen.getByText(copy.ar.auditActions.admin_update)).toBeTruthy();
 });

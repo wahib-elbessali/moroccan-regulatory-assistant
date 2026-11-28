@@ -5,14 +5,14 @@ import { api } from "../../src/ui/src/api.js";
 import { copy } from "../../src/ui/src/app/data.js";
 import DocumentsPage from "../../src/ui/src/pages/documents/DocumentsPage.jsx";
 
-const appState = vi.hoisted(() => ({ docs: [] }));
+const appState = vi.hoisted(() => ({ docs: [], lang: "fr" }));
 
 vi.mock("../../src/ui/src/app/AppContext.jsx", async () => {
   const React = await import("react");
   return {
     useApp: () => {
       const [docs, setDocs] = React.useState(appState.docs);
-      return { lang: "fr", docs, setDocs };
+      return { lang: appState.lang, docs, setDocs };
     },
   };
 });
@@ -35,6 +35,24 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   appState.docs = [];
+  appState.lang = "fr";
+});
+
+test("aligns an LTR document title with its label in Arabic RTL", () => {
+  appState.lang = "ar";
+  appState.docs = [{
+    doc_id: "admin-doc",
+    title: "Document title",
+    source_file: "document.pdf",
+    status: "ready",
+    is_mine: false,
+    roles: ["lecteur", "editeur"],
+  }];
+  render(<div dir="rtl"><DocumentsPage role="admin" /></div>);
+
+  const title = screen.getByText("Document title");
+  expect(screen.getAllByText(copy.ar.title).length).toBeGreaterThan(0);
+  expect(title.className).toContain("text-right");
 });
 
 test("shows a clear text label for document deletion", () => {
