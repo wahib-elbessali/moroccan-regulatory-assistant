@@ -230,6 +230,12 @@ def search_node(state: GraphState) -> dict:
     return {"last_passages": passages}
 
 
+def passage_label(title: str, article: str | None) -> str:
+    """How a kept passage is named in the thinking stream: "title — article", or the title
+    alone when the passage has no article number (an uploaded note, for example)."""
+    return f"{title} — {article}" if article else title
+
+
 def grade_node(state: GraphState) -> dict:
     t0 = time.perf_counter()
     last_passages = state.get("last_passages", [])
@@ -267,7 +273,7 @@ def grade_node(state: GraphState) -> dict:
 
     is_ok = len(relevant) >= cfg.agents.min_relevant
     kept_labels = list(
-        dict.fromkeys(f"{p.chunk.title} — {p.chunk.article or ''}" for p in relevant)
+        dict.fromkeys(passage_label(p.chunk.title, p.chunk.article) for p in relevant)
     )
 
     state["emit"](

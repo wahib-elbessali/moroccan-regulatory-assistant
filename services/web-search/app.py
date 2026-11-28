@@ -288,6 +288,15 @@ async def search(
         payload = response.json()
         raw_results = payload.get("results", [])
 
+        # SearxNG answers 200 even when no engine could be reached (internet off): no results and
+        # every engine listed as unresponsive. That is "search not run", not "0 results".
+        if not raw_results and payload.get("unresponsive_engines"):
+            log_search(body.request_id, "error", 0, started)
+            return JSONResponse(
+                status_code=503,
+                content={"code": "search_unavailable"},
+            )
+
         results = []
         for item in raw_results:
             if not isinstance(item, dict):

@@ -7,6 +7,17 @@ import { api } from "../api.js";
 import { copy, MAX_QUESTION_CHARS } from "../app/data.js";
 import { appendThinkingFragment, emptyThinking } from "../app/thinking.js";
 
+// A web address is shown by its site name only (adala.justice.gov.ma), never as a long
+// percent-encoded link that cannot wrap; any other source is shown as it is.
+export function sourceLabel(source) {
+  if (typeof source !== "string" || !/^https?:\/\//i.test(source)) return source;
+  try {
+    return new URL(source).hostname.replace(/^www\./, "");
+  } catch {
+    return source;
+  }
+}
+
 function CitationText({ text, citations, onCitation }) {
   const parts = text.split(/(\[\d+\])/g);
   return <>{parts.map((part, index) => {
@@ -28,9 +39,30 @@ export default function ChatView({
   const [thinkingOpen, setThinkingOpen] = useState({});
   const bottomRef = useRef(null);
   const citationPanelRef = useRef(null);
+  const followRef = useRef(true);
+  const countRef = useRef(messages.length);
+
+  // Follow the answer while it is written only if the reader is at the bottom of the page;
+  // never pull the page back while they scroll up to read.
+  useEffect(() => {
+    const onScroll = () => {
+      const { scrollHeight } = document.documentElement;
+      followRef.current = window.innerHeight + window.scrollY >= scrollHeight - 160;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const added = messages.length > countRef.current;
+    countRef.current = messages.length;
+    if (added) followRef.current = true;
+    if (!followRef.current) return;
+    // To the very bottom of the page (below the question box), so following never moves the
+    // reader up; vertical only.
+    const page = document.scrollingElement || document.documentElement;
+    if (added && typeof page.scrollTo === "function") page.scrollTo({ top: page.scrollHeight, behavior: "smooth" });
+    else page.scrollTop = page.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
@@ -38,8 +70,12 @@ export default function ChatView({
   }, [conversationId]);
 
   useEffect(() => {
-    if (selectedCitation) {
-      citationPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // The panel sits just above the question box, which stays pinned to the bottom of the screen:
+    // scroll to the very bottom so the box never covers it.
+    if (selectedCitation && citationPanelRef.current) {
+      const page = document.scrollingElement || document.documentElement;
+      if (typeof page.scrollTo === "function") page.scrollTo({ top: page.scrollHeight, behavior: "smooth" });
+      else page.scrollTop = page.scrollHeight;
     }
   }, [selectedCitation, citationScrollRequest]);
 
@@ -94,14 +130,14 @@ export default function ChatView({
   return <div className="mx-auto flex min-h-[calc(100vh-112px)] w-full max-w-[980px] flex-col px-4 pb-5 pt-6 md:px-8">
     {messages.length === 0 ? <div className="my-auto pb-16 pt-10 text-center rise-in">
       <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-xl border border-[#dce4d9] bg-[#e9eee7] text-[#245c48]"><BookOpen size={25} /></div>
-      <span className="text-xs font-bold uppercase tracking-[.14em] text-[#b76940]">المعرفة القانونية · LE DROIT MAROCAIN</span>
+      <span className="text-xs font-bold uppercase tracking-[.14em] text-[#b76940]">{t.legalKnowledge}</span>
       <h1 className={`mx-auto mt-3 max-w-2xl text-3xl font-semibold leading-tight text-[#25352a] md:text-4xl ${lang === "ar" ? "arabic" : ""}`}>{t.askTitle}</h1>
       <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-[#777b70]">{t.askIntro}</p>
       <div className="mx-auto mt-9 grid max-w-2xl gap-2 text-start sm:grid-cols-2">
-        {(lang === "ar" ? ["ما هو أجل معالجة الطلبات الإدارية؟", "ما هي الوثائق المطلوبة لإيداع طلب؟"] : ["Quel est le délai de traitement des demandes ?", "Quelles pièces joindre à une demande ?"]).map((suggestion) => <button key={suggestion} onClick={() => setQuestion(suggestion)} className="focus-ring flex min-h-14 items-center justify-between gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] px-4 text-start text-sm text-[#4c554a] hover:border-[#a7b7a5] hover:bg-white"><span>{suggestion}</span><ArrowLeft size={15} className="shrink-0 text-[#9b6b4c]" /></button>)}
+        {(lang === "ar" ? ["ما هو أجل معالجة الطلبات الإدارية؟", "ما هي الوثائق المطلوبة لإيداع طلب؟"] : ["Quel est le délai de traitement des demandes ?", "Quelles pièces joindre à une demande ?"]).map((suggestion) => <button key={suggestion} onClick={() => setQuestion(suggestion)} className="focus-ring flex min-h-14 items-center justify-between gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] px-4 text-start text-sm text-[#4c554a] hover:border-[#a7b7a5] hover:bg-white"><span>{suggestion}</span><ArrowLeft size={15} className="shrink-0 text-[#9b6b4c] ltr:rotate-180" /></button>)}
       </div>
-    </div> : <div className="grid flex-1 content-start gap-8 pb-8">
-      {messages.map((item) => <article key={item.id} className="grid gap-4 fade-in">
+    </div> : <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-8 pb-8">
+      {messages.map((item) => <article key={item.id} className="grid min-w-0 grid-cols-1 gap-4 fade-in">
         <div className="flex justify-end"><div dir="auto" className="max-w-[85%] rounded-2xl rounded-br-sm bg-[#e6ebe2] px-4 py-3 text-[15px] leading-7 text-[#29382c]">{item.question}</div></div>
         <div className="flex items-start gap-3"><span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#245c48] text-white"><Sparkles size={15} /></span><div className="min-w-0 flex-1 pt-1">
           {item.thinking && <details open={item.status === "working" || thinkingOpen[item.id] === true} onToggle={(event) => { const isOpen = event.currentTarget.open; setThinkingOpen((value) => ({ ...value, [item.id]: isOpen })); }} className="mb-3 max-w-2xl rounded-md border border-[#e3e3da] bg-[#fbfaf6]">
@@ -116,8 +152,8 @@ export default function ChatView({
               const hasWebNotice = hasWebCitation && remainingLines.length > 0;
               return <>
                 {hasWebNotice && <div dir="auto" className="mb-3 border-s-2 border-[#c56e3d] bg-[#f6eee7] px-3 py-2 text-xs font-semibold text-[#885232]">{firstLine}</div>}
-                <p dir="auto" className={`break-words [overflow-wrap:anywhere] text-[15px] leading-8 text-[#30382e] ${item.answer.language === "ar" ? "arabic" : ""}`}><CitationText text={hasWebNotice ? remainingLines.join("\n") : item.answer.text} citations={citations} onCitation={openCitation} /></p>
-                {citations.length > 0 && <div className="mt-5 min-w-0 border-t border-[#e3e3da] pt-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-[.1em] text-[#777b70]">{t.sources} · {citations.length}</h3><div className="grid gap-2">{citations.map((citation, index) => <button key={index} onClick={() => openCitation(citation)} className="focus-ring flex items-center gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] p-3 text-start hover:bg-white"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6ebe2] text-xs font-bold text-[#245c48]"><bdi>{index + 1}</bdi></span><span className="min-w-0"><span dir="auto" className="block truncate text-sm font-semibold text-[#3a4137]">{citation.title}</span><span dir="auto" className="mt-1 block break-words text-xs text-[#777b70] [overflow-wrap:anywhere]">{[citation.article, citation.page && `${item.answer.language === "ar" ? "ص" : "p."} ${citation.page}`, citation.source].filter(Boolean).join(" · ")}</span>{citation.url && <span className="mt-1 inline-block rounded bg-[#f6eee7] px-1.5 py-0.5 text-[10px] font-semibold text-[#885232]">{t.webSource}</span>}</span><ChevronLeft size={16} className="ms-auto shrink-0 text-[#8b9085]" /></button>)}</div></div>}
+                <p dir="auto" className={`[overflow-wrap:anywhere] text-[15px] leading-8 text-[#30382e] ${item.answer.language === "ar" ? "arabic" : ""}`}><CitationText text={hasWebNotice ? remainingLines.join("\n") : item.answer.text} citations={citations} onCitation={openCitation} /></p>
+                {citations.length > 0 && <div className="mt-5 min-w-0 border-t border-[#e3e3da] pt-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-[.1em] text-[#777b70]">{t.sources} · {citations.length}</h3><div className="grid grid-cols-1 gap-2">{citations.map((citation, index) => <button key={index} onClick={() => openCitation(citation)} className="focus-ring flex min-w-0 items-center gap-3 rounded-md border border-[#e3e3da] bg-[#fbfaf6] p-3 text-start hover:bg-white"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6ebe2] text-xs font-bold text-[#245c48]"><bdi>{index + 1}</bdi></span><span className="min-w-0 flex-1"><span dir="auto" className="block truncate text-sm font-semibold text-[#3a4137]">{citation.title}</span><span dir="auto" className="mt-1 block text-xs text-[#777b70] [overflow-wrap:anywhere]">{[citation.article, citation.page && `${item.answer.language === "ar" ? "ص" : "p."} ${citation.page}`, sourceLabel(citation.source)].filter(Boolean).join(" · ")}</span>{citation.url && <span className="mt-1 inline-block rounded bg-[#f6eee7] px-1.5 py-0.5 text-[10px] font-semibold text-[#885232]">{t.webSource}</span>}</span><ChevronLeft size={16} className="ms-auto shrink-0 text-[#8b9085] ltr:rotate-180" /></button>)}</div></div>}
               </>;
             })()}
             {item.answer.status === "answered" && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#777b70]"><span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#6b906b]" />{copy[item.answer.language === "ar" ? "ar" : "fr"].verify}</span><span>{t.confidence}: <bdi>{Math.round((item.answer.confidence || 0) * 100)}%</bdi></span></div>}
@@ -125,9 +161,9 @@ export default function ChatView({
         </div></div>
       </article>)}<div ref={bottomRef} />
     </div>}
-    {selectedCitation && <div ref={citationPanelRef} className="mb-4 w-full min-w-0 scroll-mt-20 scroll-mb-28 rounded-md border border-[#dfe2d8] bg-white p-4 shadow-sm fade-in" dir="auto"><div className="flex items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#b76940]">{t.sources}</div><h3 className="mt-1 break-words font-bold text-[#30382e] [overflow-wrap:anywhere]">{selectedCitation.title}</h3></div><button aria-label="Fermer" onClick={() => setSelectedCitation(null)} className="focus-ring shrink-0 rounded p-1 text-[#777b70]"><X size={17} /></button></div><p className="mt-2 break-words text-xs text-[#777b70] [overflow-wrap:anywhere]">{[selectedCitation.article, selectedCitation.page && `p. ${selectedCitation.page}`, selectedCitation.source].filter(Boolean).join(" · ")}</p><blockquote className="mt-3 break-words border-s-2 border-[#94a68d] ps-3 text-sm leading-6 text-[#454b42] [overflow-wrap:anywhere]">{selectedCitation.excerpt}</blockquote>{selectedCitation.url?.match(/^https?:\/\//) && <a className="mt-3 block max-w-full text-sm font-semibold text-[#245c48] underline" href={selectedCitation.url} target="_blank" rel="noopener noreferrer"><span className="block">{t.webSource} ↗</span><span dir="ltr" className="mt-1 block break-all font-normal [overflow-wrap:anywhere]">{selectedCitation.url}</span></a>}</div>}
-    <form onSubmit={submit} className="sticky bottom-0 border border-[#dedfd5] bg-white p-2 shadow-[0_8px_32px_rgba(38,47,37,.08)] md:rounded-xl md:p-3">
-      <textarea dir="auto" rows="2" maxLength={MAX_QUESTION_CHARS} value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} placeholder={t.askPlaceholder} className={`focus-ring max-h-36 min-h-14 w-full resize-y border-0 bg-transparent px-2 py-2 text-sm leading-6 text-[#30382e] placeholder:text-[#92958b] outline-none ${lang === "ar" ? "arabic" : ""}`} />
+    {selectedCitation && <div ref={citationPanelRef} className="mb-4 w-full min-w-0 scroll-mt-20 scroll-mb-28 rounded-md border border-[#dfe2d8] bg-white p-4 shadow-sm fade-in" dir="auto"><div className="flex items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#b76940]">{t.sources}</div><h3 className="mt-1 font-bold text-[#30382e] [overflow-wrap:anywhere]">{selectedCitation.title}</h3></div><button aria-label="Fermer" onClick={() => setSelectedCitation(null)} className="focus-ring shrink-0 rounded p-1 text-[#777b70]"><X size={17} /></button></div><p className="mt-2 text-xs text-[#777b70] [overflow-wrap:anywhere]">{[selectedCitation.article, selectedCitation.page && `${lang === "ar" ? "ص" : "p."} ${selectedCitation.page}`, sourceLabel(selectedCitation.source)].filter(Boolean).join(" · ")}</p><blockquote className="mt-3 border-s-2 border-[#94a68d] ps-3 text-sm leading-6 text-[#454b42] [overflow-wrap:anywhere]">{selectedCitation.excerpt}</blockquote>{selectedCitation.url?.match(/^https?:\/\//) && <a className="mt-3 block max-w-full text-sm font-semibold text-[#245c48] underline" href={selectedCitation.url} target="_blank" rel="noopener noreferrer"><span className="block">{t.webSource} ↗</span><span dir="ltr" className="mt-1 block font-normal [overflow-wrap:anywhere]">{sourceLabel(selectedCitation.url)}</span></a>}</div>}
+    <form onSubmit={submit} className="sticky bottom-0 w-full border border-[#dedfd5] bg-white p-2 shadow-[0_8px_32px_rgba(38,47,37,.08)] md:rounded-xl md:p-3">
+      <textarea dir="auto" rows="2" maxLength={MAX_QUESTION_CHARS} value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} placeholder={t.askPlaceholder} className={`focus-ring block h-20 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-2 text-sm leading-6 text-[#30382e] placeholder:text-[#92958b] outline-none ${lang === "ar" ? "arabic" : ""}`} />
       <div className="flex items-center justify-between border-t border-[#efefe9] pt-2"><span className="text-[11px] text-[#92958b]">{question.length}/{MAX_QUESTION_CHARS}{error && <span role="alert" className="ms-3 text-[#a54132]">{error}</span>}</span><button type="submit" disabled={busy || !question.trim()} className="focus-ring inline-flex h-9 min-h-9 items-center justify-center gap-2 rounded-md bg-[#245c48] px-3 text-sm font-semibold text-white hover:bg-[#193e33] disabled:cursor-not-allowed disabled:opacity-55">{busy ? <Activity size={16} className="animate-pulse" /> : <Send size={15} />}{t.send}</button></div>
     </form>
   </div>;

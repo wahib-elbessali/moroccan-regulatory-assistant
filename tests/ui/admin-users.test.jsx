@@ -306,7 +306,7 @@ test("audit log shows translated actions, named users, and readable detail field
   );
 
   expect(await screen.findByText("Modification du rôle d’un utilisateur")).toBeTruthy();
-  expect(screen.getByText("Auteur: Admin User (@admin.user)")).toBeTruthy();
+  expect(screen.getByText("Auteur: Administrateur (@admin.user)")).toBeTruthy();
   expect(screen.getByText("Compte concerné")).toBeTruthy();
   expect(screen.getByText("Target User (@target.user)")).toBeTruthy();
   expect(screen.getByText("Lecteur")).toBeTruthy();

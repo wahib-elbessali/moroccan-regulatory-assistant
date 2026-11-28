@@ -24,11 +24,15 @@
   --orange: #c56e3d;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, textarea, select { font: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .55; }
+/* Element defaults go in the base layer: outside a layer they would beat Tailwind's utilities
+   (text-xs, font-semibold… on buttons, inputs and the question box would be ignored). */
+@layer base {
+  * { box-sizing: border-box; }
+  body { margin: 0; min-width: 320px; min-height: 100vh; }
+  button, input, textarea, select { font: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .55; }
+}
 ::selection { color: #fff; background: #245c48; }
 [dir="rtl"] .arabic, [lang="ar"] { font-family: "Noto Naskh Arabic", serif; }
 .app-shell { animation: arrive .4s ease both; }

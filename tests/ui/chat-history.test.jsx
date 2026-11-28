@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../src/ui/src/api.js";
 import { copy } from "../../src/ui/src/app/data.js";
+import { MemoryRouter } from "react-router-dom";
+import ConversationHistory, { ConversationProvider } from "../../src/ui/src/components/ConversationHistory.jsx";
 import ChatPage from "../../src/ui/src/pages/chat/ChatPage.jsx";
 
 const appState = vi.hoisted(() => ({
@@ -53,32 +55,22 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+// The side-menu list and the chat page share the saved conversations.
+function History() {
+  return <MemoryRouter><ConversationProvider><ConversationHistory /><ChatPage /></ConversationProvider></MemoryRouter>;
+}
+
 describe("conversation history", () => {
-  test("keeps the conversation history independently pinned while chat content grows", async () => {
-    render(<ChatPage />);
+  test("keeps long titles inside the menu", async () => {
+    render(<History />);
 
-    await screen.findByText("Conversation récente");
-
-    const sidebar = document.getElementById("conversation-history");
-    expect(sidebar.className).toContain("md:sticky");
-    expect(sidebar.className).toContain("md:self-start");
-    expect(sidebar.className).toContain("md:h-[calc(100vh-68px)]");
-  });
-
-  test("can hide and restore the conversation history panel", async () => {
-    const user = userEvent.setup();
-    render(<ChatPage />);
-
-    await screen.findByText("Conversation récente");
-    await user.click(screen.getByRole("button", { name: copy.fr.hideHistory }));
-    expect(screen.queryByText("Conversation récente")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: copy.fr.showHistory }));
-    expect(await screen.findByText("Conversation récente")).toBeTruthy();
+    const title = await screen.findByText("Conversation récente");
+    expect(title.className).toContain("truncate");
+    expect(title.closest("li").className).toContain("min-w-0");
   });
 
   test("sorts saved conversations newest first", async () => {
-    render(<ChatPage />);
+    render(<History />);
 
     await screen.findByText("Conversation récente");
 
@@ -100,7 +92,7 @@ describe("conversation history", () => {
       }],
     });
     const user = userEvent.setup();
-    render(<ChatPage />);
+    render(<History />);
 
     await user.click(await screen.findByRole("button", { name: /Conversation récente/ }));
 
@@ -121,7 +113,7 @@ describe("conversation history", () => {
   test("deletes a conversation only after confirmation", async () => {
     api.conversations.remove.mockResolvedValue({});
     const user = userEvent.setup();
-    render(<ChatPage />);
+    render(<History />);
 
     await screen.findByText("Conversation récente");
     const olderRow = screen.getByText("Conversation ancienne").closest("li");
@@ -137,7 +129,7 @@ describe("conversation history", () => {
 
   test("starts a fresh conversation and clears the displayed messages", async () => {
     const user = userEvent.setup();
-    render(<ChatPage />);
+    render(<History />);
 
     await user.click(screen.getByRole("button", { name: copy.fr.newConversation }));
 
