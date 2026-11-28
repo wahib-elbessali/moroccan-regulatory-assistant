@@ -8,7 +8,7 @@ from src.core.llm import warmup
 
 @pytest.mark.parametrize(
     ("mode", "expected"),
-    [("local", ["big", "narr"]), ("light", ["small", "narr"]), ("cloud", ["big", "narr"])],
+    [("local", ["big", "narr"]), ("light", ["small", "narr"]), ("cloud", ["narr"])],
 )
 def test_models_to_load(mode: str, expected: list[str]) -> None:
     assert warmup.models_to_load(mode, "big", "small", "narr") == expected
